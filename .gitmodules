@@ -1,0 +1,3 @@
+[submodule "ext/memoRDMA"]
+	path = ext/memoRDMA
+	url = git@github.com:AndreasGeyerTUD/memoRDMA.git
