@@ -6,8 +6,18 @@
 #include <include/common.h>
 #include <include/util.h>
 
+#include "DataCatalog.h"
+
 int main() {
     std::cout << "Works" << std::endl;
+
+    auto worker_it = DataCatalog::getInstance().generate( "worker", 20 );
+    auto salary_it = DataCatalog::getInstance().generate( "salary", 5 );
+
+    std::cout << "Iterator : " << (*worker_it).second << std::endl;
+    auto found = DataCatalog::getInstance().find( "worker" );
+    std::cout << "Ptr: " << found << std::endl;
+    return 0;
 
     config_t config = {.dev_name = "",
                     .server_name = "",
