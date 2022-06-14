@@ -62,48 +62,71 @@ DataCatalog::DataCatalog() {
         this->print_column(ident);
     };
 
+    auto retrieveRemoteColsLambda = [this]() -> void {
+        ConnectionManager::getInstance().sendOpCode(1, send_column_info);
+    };
+
     TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); }));
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
+    TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
 
-    CallbackFunction cb = [this](size_t conId, char* ptr) -> void { 
-        std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl; 
+    CallbackFunction cb_sendInfo = [this](size_t conId, char* ptr) -> void {
+        std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = catalog_communication_code::receive_column_info;
         const size_t columnCount = cols.size();
-        
-        size_t totalPayloadSize = sizeof(col_network_info) * cols.size();
-        for ( auto col : cols ) {
-            totalPayloadSize += sizeof( size_t ); // store size of ident length in a 64bit int
-            totalPayloadSize += col.first.size(); // actual c_string
-        }
 
-        char* data = (char*) malloc( totalPayloadSize );
+        size_t totalPayloadSize = sizeof(size_t) + (sizeof(col_network_info) * cols.size());
+        for (auto col : cols) {
+            totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
+            totalPayloadSize += col.first.size();  // actual c_string
+        }
+        std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
+        char* data = (char*) malloc(totalPayloadSize);
         char* tmp = data;
-        for ( auto col : cols ) {
-            col_network_info cni( col.second->size, col.second->datatype );
+
+        // How many columns does the receiver need to read
+        memcpy( tmp, &columnCount, sizeof(size_t) );
+        tmp += sizeof( size_t );
+
+        for (auto col : cols) {
+            col_network_info cni(col.second->size, col.second->datatype);
             // Meta data of column, element count and data type
-            memcpy( tmp, &cni, sizeof( cni ) );
-            tmp += sizeof( cni );
-            
+            memcpy(tmp, &cni, sizeof(cni));
+            tmp += sizeof(cni);
+
             // Length of column name
             size_t identlen = col.first.size();
-            memcpy( tmp, &identlen, sizeof( size_t ) );
-            tmp += sizeof( size_t );
+            memcpy(tmp, &identlen, sizeof(size_t));
+            tmp += sizeof(size_t);
 
             // Actual column name
-            memcpy( tmp, col.first.c_str(), identlen );
+            memcpy(tmp, col.first.c_str(), identlen);
             tmp += identlen;
         }
         ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, code);
 
-        // Release temporary buffer        
-        free( data );
+        // Release temporary buffer
+        free(data);
     };
-    
-    if (ConnectionManager::getInstance().registerCallback( catalog_communication_code::send_column_info, cb) ) {
-        std::cout << "[DataCatalog] Successfully added callback for code 0xfa" << std::endl;
+
+    CallbackFunction cb_receiveInfo = [this](size_t conId, char* ptr) -> void {
+        char* tmp = ptr;
+        size_t colCnt;
+        memcpy( &colCnt, ptr, sizeof(size_t) );
+        std::cout << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
+    };
+
+    if (ConnectionManager::getInstance().registerCallback(send_column_info, cb_sendInfo)) {
+        std::cout << "[DataCatalog] Successfully added callback for code 0xf0" << std::endl;
     } else {
-        std::cout << "[DataCatalog] Error adding callback for code 0xfa" << std::endl;
+        std::cout << "[DataCatalog] Error adding callback for code 0xf0" << std::endl;
+    }
+
+    if (ConnectionManager::getInstance().registerCallback(receive_column_info, cb_receiveInfo)) {
+        std::cout << "[DataCatalog] Successfully added callback for code 0xf1" << std::endl;
+    } else {
+        std::cout << "[DataCatalog] Error adding callback for code 0xf1" << std::endl;
     }
 }
 
