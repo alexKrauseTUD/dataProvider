@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <iostream>
-#include <include/TaskManager.h>
+#include <TaskManager.h>
 #include <include/ConnectionManager.h>
 #include <include/TaskManager.h>
 #include <include/common.h>
@@ -11,13 +11,11 @@
 int main() {
     std::cout << "Works" << std::endl;
 
-    auto worker_it = DataCatalog::getInstance().generate( "worker", 20 );
-    auto salary_it = DataCatalog::getInstance().generate( "salary", 5 );
+    auto worker_it = DataCatalog::getInstance().generate( "worker", col_data_t::gen_float, 20 );
+    auto salary_it = DataCatalog::getInstance().generate( "salary", col_data_t::gen_smallint, 5 );
 
-    std::cout << "Iterator : " << (*worker_it).second << std::endl;
-    auto found = DataCatalog::getInstance().find( "worker" );
-    std::cout << "Ptr: " << found << std::endl;
-    return 0;
+    DataCatalog::getInstance().print_all();
+
 
     config_t config = {.dev_name = "",
                     .server_name = "",
@@ -36,15 +34,15 @@ int main() {
         abort = true;
     };
 
-    TaskManager tm;
-    tm.setGlobalAbortFunction(globalExit);
+    TaskManager::getInstance().setGlobalAbortFunction(globalExit);
+    ConnectionManager::getInstance();
 
     std::string content;
     std::string op;
 
     while (!abort) {
         op = "-1";
-        tm.printAll();
+        TaskManager::getInstance().printAll();
         std::cout << "Type \"exit\" to terminate." << std::endl;
         // std::cin >> op;
         std::getline(std::cin, op, '\n');
@@ -69,7 +67,7 @@ int main() {
                 continue;
             }
             if (converted) {
-                tm.executeById(id);
+                TaskManager::getInstance().executeById(id);
             }
         }
     }
