@@ -71,7 +71,7 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
 
-    CallbackFunction cb_sendInfo = [this](size_t conId, char* ptr) -> void {
+    CallbackFunction cb_sendInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = catalog_communication_code::receive_column_info;
         const size_t columnCount = cols.size();
@@ -82,12 +82,12 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += col.first.size();  // actual c_string
         }
         std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
-        char* data = (char*) malloc(totalPayloadSize);
+        char* data = (char*)malloc(totalPayloadSize);
         char* tmp = data;
 
         // How many columns does the receiver need to read
-        memcpy( tmp, &columnCount, sizeof(size_t) );
-        tmp += sizeof( size_t );
+        memcpy(tmp, &columnCount, sizeof(size_t));
+        tmp += sizeof(size_t);
 
         for (auto col : cols) {
             col_network_info cni(col.second->size, col.second->datatype);
@@ -104,30 +104,72 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, col.first.c_str(), identlen);
             tmp += identlen;
         }
-        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, code);
+        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code);
 
         // Release temporary buffer
         free(data);
     };
 
-    CallbackFunction cb_receiveInfo = [this](size_t conId, char* ptr) -> void {
-        char* tmp = ptr;
+    CallbackFunction cb_receiveInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         size_t colCnt;
-        memcpy( &colCnt, ptr, sizeof(size_t) );
-        std::cout << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
+        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        memcpy(&colCnt, data, sizeof(size_t));
+        data += sizeof(size_t);
+        std::stringstream ss;
+        ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
+
+        col_network_info cni(0, col_data_t::gen_void);
+        size_t identlen;
+        for (size_t i = 0; i < colCnt; ++i) {
+            memcpy(&cni, data, sizeof(cni));
+            data += sizeof(cni);
+
+            memcpy(&identlen, data, sizeof(size_t));
+            data += sizeof(size_t);
+
+            std::string ident(data, identlen);
+            data += identlen;
+
+            ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << cni.col_data_type_to_string() << std::endl;
+            remote_cols.insert({ident, cni});
+        }
+
+        if (colCnt > 0) {
+            auto fetchLambda = [&]() -> void {
+                print_all();
+                std::cout << "[DataCatalog] Fetch data for which column?" << std::endl;
+                std::string ident;
+                std::cin >> ident;
+                std::cin.clear();
+                std::cin.ignore(10000, '\n');
+                char* payload = (char*) malloc( ident.size() + sizeof(size_t) );
+                ConnectionManager::getInstance().sendData(conId, payload, ident.size() + sizeof(size_t), nullptr, 0, catalog_communication_code::fetch_column_data );
+            };
+
+            if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
+                TaskManager::getInstance().registerTask(new Task("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
+                std::cout << "[DataCatalog] Registered new Task!" << std::endl;
+            }
+            TaskManager::getInstance().printAll();
+        }
+        std::cout << ss.str() << std::endl;
     };
 
-    if (ConnectionManager::getInstance().registerCallback(send_column_info, cb_sendInfo)) {
-        std::cout << "[DataCatalog] Successfully added callback for code 0xf0" << std::endl;
-    } else {
-        std::cout << "[DataCatalog] Error adding callback for code 0xf0" << std::endl;
-    }
+    CallbackFunction cb_receiveCol = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        /* Expected message layout
+         *   Msg:     [ header_t, payload ]
+         *   payload: [ column_offset, data ]
+         */
 
-    if (ConnectionManager::getInstance().registerCallback(receive_column_info, cb_receiveInfo)) {
-        std::cout << "[DataCatalog] Successfully added callback for code 0xf1" << std::endl;
-    } else {
-        std::cout << "[DataCatalog] Error adding callback for code 0xf1" << std::endl;
-    }
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* column_data = data + +head->payload_offset;
+        std::cout << "[DataCatalog] Received Data for a column";
+    };
+
+    registerCallback(send_column_info, cb_sendInfo);
+    registerCallback(receive_column_info, cb_receiveInfo);
 }
 
 DataCatalog& DataCatalog::getInstance() {
@@ -142,6 +184,14 @@ DataCatalog::~DataCatalog() {
 void DataCatalog::clear() {
     for (auto it : cols) {
         delete it.second;
+    }
+}
+
+void DataCatalog::registerCallback(uint8_t code, CallbackFunction cb) const {
+    if (ConnectionManager::getInstance().registerCallback(code, cb)) {
+        std::cout << "[DataCatalog] Successfully added callback for code " << static_cast<uint64_t>(code) << std::endl;
+    } else {
+        std::cout << "[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;
     }
 }
 
@@ -200,7 +250,8 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             break;
         }
     }
-
+    tmp->is_remote = false;
+    tmp->is_complete = true;
     cols.insert({ident, tmp});
     return cols.find(ident);
 }

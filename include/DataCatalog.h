@@ -8,31 +8,56 @@
 #include <variant>
 
 enum col_data_t {
-    gen_float = 0,
-    gen_double = 1,
-    gen_smallint = 2,
-    gen_bigint = 3
+    gen_void = 0,
+    gen_float = 1,
+    gen_double = 2,
+    gen_smallint = 3,
+    gen_bigint = 4
 };
 
 struct col_network_info {
     size_t size_info;
     uint8_t type_info;
 
-    col_network_info( size_t sz, col_data_t dt ) {
+    col_network_info() = default;
+
+    col_network_info(size_t sz, col_data_t dt) {
         size_info = sz;
         type_info = dt;
     }
+
+    col_network_info(const col_network_info& other) = default;
+    col_network_info& operator=(const col_network_info& other) = default;
+
+    std::string col_data_type_to_string() {
+        switch (static_cast<col_data_t>(type_info)) {
+            case gen_float:
+                return "float";
+            case gen_double:
+                return "double";
+            case gen_smallint:
+                return "uint8_t";
+            case gen_bigint:
+                return "uint64_t";
+            default:
+                return "Datatype case not implemented!";
+        }
+    };
 };
 
 enum catalog_communication_code : uint8_t {
     send_column_info = 0xf0,
-    receive_column_info = 0xf1
+    receive_column_info = 0xf1,
+    fetch_column_data = 0xf2,
+    receive_column_data = 0xf3
 };
 
 struct col_t {
-    void* data;
-    col_data_t datatype;
-    size_t size;
+    void* data = nullptr;
+    col_data_t datatype = col_data_t::gen_void;
+    size_t size = 0;
+    bool is_remote = false;
+    bool is_complete = false;
 
     ~col_t() {
         delete reinterpret_cast<char*>(data);
@@ -109,10 +134,12 @@ struct col_t {
 };
 
 typedef std::unordered_map<std::string, col_t*> col_dict_t;
+typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
 
 class DataCatalog {
    private:
     col_dict_t cols;
+    col_remote_dict_t remote_cols;
     DataCatalog();
 
    public:
@@ -124,8 +151,9 @@ class DataCatalog {
 
     void clear();
 
-    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount);
+    void registerCallback( uint8_t code, CallbackFunction cb ) const;
 
+    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount);
     col_t* find(std::string ident) const;
 
     void print_column(std::string& ident) const;
