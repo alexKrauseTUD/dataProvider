@@ -11,8 +11,8 @@
 int main() {
     std::cout << "Works" << std::endl;
 
-    auto worker_it = DataCatalog::getInstance().generate( "worker", col_data_t::gen_float, 20 );
-    auto salary_it = DataCatalog::getInstance().generate( "salary", col_data_t::gen_smallint, 5 );
+    auto worker_it = DataCatalog::getInstance().generate( "worker", col_data_t::gen_smallint, 20 );
+    auto salary_it = DataCatalog::getInstance().generate( "salary", col_data_t::gen_float, 5 );
 
     DataCatalog::getInstance().print_all();
 
