@@ -8,17 +8,17 @@
 #include <string>
 #include <unordered_map>
 
-enum col_data_t {
-    gen_void = 0,
-    gen_float = 1,
-    gen_double = 2,
-    gen_smallint = 3,
-    gen_bigint = 4
+enum class col_data_t : unsigned char {
+    gen_void,
+    gen_float,
+    gen_double,
+    gen_smallint,
+    gen_bigint
 };
 
 struct col_network_info {
     size_t size_info;
-    uint8_t type_info;
+    col_data_t type_info;
     size_t received_bytes;
 
     col_network_info() = default;
@@ -32,15 +32,15 @@ struct col_network_info {
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
 
-    static std::string col_data_type_to_string(uint8_t info) {
-        switch (static_cast<col_data_t>(info)) {
-            case gen_float:
+    static std::string col_data_type_to_string(col_data_t info) {
+        switch (info) {
+            case col_data_t::gen_float:
                 return "float";
-            case gen_double:
+            case col_data_t::gen_double:
                 return "double";
-            case gen_smallint:
+            case col_data_t::gen_smallint:
                 return "uint8_t";
-            case gen_bigint:
+            case col_data_t::gen_bigint:
                 return "uint64_t";
             default:
                 return "Datatype case not implemented!";
@@ -76,7 +76,7 @@ struct col_network_info {
     }
 };
 
-enum catalog_communication_code : uint8_t {
+enum class catalog_communication_code : uint8_t {
     send_column_info = 0xf0,
     receive_column_info = 0xf1,
     fetch_column_data = 0xf2,
@@ -241,7 +241,7 @@ struct col_t {
            << "\t";
         auto tmp = static_cast<T>(data);
         for (size_t i = 0; i < size && i < 10; ++i) {
-            if (datatype == gen_smallint) {
+            if (datatype == col_data_t::gen_smallint) {
                 ss << " " << (uint64_t)tmp[i];
             } else {
                 ss << " " << tmp[i];
@@ -265,7 +265,7 @@ struct col_t {
         const auto tmp = static_cast<const T*>(data);
         std::ofstream log(logname);
         for (size_t i = 0; i < size; ++i) {
-            if (datatype == gen_smallint) {
+            if (datatype == col_data_t::gen_smallint) {
                 log << " " << (uint64_t)tmp[i];
             } else {
                 log << " " << tmp[i];

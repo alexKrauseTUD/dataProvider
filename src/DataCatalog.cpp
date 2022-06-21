@@ -92,7 +92,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto retrieveRemoteColsLambda = [this]() -> void {
-        ConnectionManager::getInstance().sendOpCode(1, send_column_info);
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
     };
 
     auto logLambda = [this]() -> void {
@@ -148,7 +148,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_sendInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         // std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
-        const uint8_t code = catalog_communication_code::receive_column_info;
+        const uint8_t code = static_cast<uint8_t>(catalog_communication_code::receive_column_info);
         const size_t columnCount = cols.size();
 
         size_t totalPayloadSize = sizeof(size_t) + (sizeof(col_network_info) * cols.size());
@@ -192,8 +192,9 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receiveInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        size_t colCnt;
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        
+        size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
         data += sizeof(size_t);
         // std::stringstream ss;
@@ -236,7 +237,7 @@ DataCatalog::DataCatalog() {
                 const size_t sz = ident.size();
                 memcpy(payload, &sz, sizeof(size_t));
                 memcpy(payload + sizeof(size_t), ident.c_str(), sz);
-                ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, catalog_communication_code::fetch_column_data);
+                ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_column_data));
             };
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
@@ -265,33 +266,30 @@ DataCatalog::DataCatalog() {
         memcpy(&identSz, data, sizeof(size_t));
         data += sizeof(size_t);
 
-        char* ident = (char*)malloc(identSz);
-        memcpy(ident, data, identSz);
-        std::string ident_s(ident, identSz);
+        std::string ident(data, identSz);
 
-        // std::cout << "[DataCatalog] Remote requested data for column '" << ident_s << "' with ident len " << identSz << std::endl;
-        auto col = cols.find(ident_s);
+        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
+        auto col = cols.find(ident);
         if (col != cols.end()) {
             /* Message Layout
              * [ header_t | ident_len, ident, col_data_type | col_data ]
              */
-            const size_t appMetaSize = sizeof(size_t) + identSz + sizeof(uint8_t);
+            const size_t appMetaSize = sizeof(size_t) + identSz + sizeof(col_data_t);
             char* appMetaData = (char*)malloc(appMetaSize);
             char* tmp = appMetaData;
 
             memcpy(tmp, &identSz, sizeof(size_t));
             tmp += sizeof(size_t);
 
-            memcpy(tmp, ident_s.c_str(), identSz);
+            memcpy(tmp, ident.c_str(), identSz);
             tmp += identSz;
 
-            memcpy(tmp, &col->second->datatype, sizeof(uint8_t));
+            memcpy(tmp, &col->second->datatype, sizeof(col_data_t));
 
-            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, receive_column_data);
+            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data));
 
             free(appMetaData);
         }
-        free(ident);
     };
 
     /* Message Layout
@@ -308,17 +306,15 @@ DataCatalog::DataCatalog() {
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
         data += sizeof(size_t);
-
-        char* ident = (char*)malloc(identSz);
-        memcpy(ident, data, identSz);
+        
+        std::string ident(data, identSz);
         data += identSz;
 
-        uint8_t data_type;
-        memcpy(&data_type, data, sizeof(uint8_t));
+        col_data_t data_type;
+        memcpy(&data_type, data, sizeof(col_data_t));
 
-        std::string ident_s(ident, identSz);
         // std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
-        // std::cout << "Received data for column: " << ident_s
+        // std::cout << "Received data for column: " << ident
         //           << " of type " << col_network_info::col_data_type_to_string(data_type)
         //           << ": " << head->current_payload_size
         //           << " Bytes of " << head->total_data_size
@@ -326,13 +322,13 @@ DataCatalog::DataCatalog() {
         //           << " AppMetaDataSize: " << head->payload_start << " Bytes"
         //           << std::endl;
 
-        auto col = find_remote(ident_s);
-        auto col_network_info_iterator = remote_col_info.find(ident_s);
+        auto col = find_remote(ident);
+        auto col_network_info_iterator = remote_col_info.find(ident);
         // Column object already created?
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
             if (col_network_info_iterator != remote_col_info.end()) {
-                col = add_remote_column(ident_s, col_network_info_iterator->second);
+                col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
                 std::cout << "[DataCatalog] No Network info for received column, fetch column info first -- discarding message" << std::endl;
             }
@@ -344,14 +340,14 @@ DataCatalog::DataCatalog() {
 
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
-            std::cout << "[DataCatalog] Received all data for column: " << ident_s << std::endl;
+            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
-    registerCallback(send_column_info, cb_sendInfo);
-    registerCallback(receive_column_info, cb_receiveInfo);
-    registerCallback(fetch_column_data, cb_fetchCol);
-    registerCallback(receive_column_data, cb_receiveCol);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::send_column_info), cb_sendInfo);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_info), cb_receiveInfo);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_data), cb_fetchCol);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_data), cb_receiveCol);
 }
 
 DataCatalog& DataCatalog::getInstance() {
