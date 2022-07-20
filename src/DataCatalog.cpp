@@ -244,10 +244,12 @@ DataCatalog::DataCatalog() {
         if (col_it != dict.end()) {
             auto cur_col = col_it->second;
             std::size_t count = 0;
-            for ( auto it = cur_col->begin<uint64_t>(); it != cur_col->end<uint64_t>(); ++it ) {
+            auto t_start = std::chrono::high_resolution_clock::now();
+            for (auto it = cur_col->begin<uint64_t>(); it != cur_col->end<uint64_t>(); ++it) {
                 count++;
             }
-            std::cout << "I found " << count << " Elements. " << std::endl;
+            auto t_end = std::chrono::high_resolution_clock::now();
+            std::cout << "I found " << count << " Elements in " << std::chrono::duration_cast<std::chrono::milliseconds>( t_end - t_start).count() << "ms" << std::endl;
         } else {
             std::cout << "[DataCatalog] Invalid column name." << std::endl;
         }
@@ -381,6 +383,9 @@ DataCatalog::DataCatalog() {
             // ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
             if (!remote_col_info.contains(ident)) {
                 remote_col_info.insert({ident, cni});
+                if (!find_remote(ident)) {
+                    add_remote_column(ident, cni);
+                }
             }
         }
 
@@ -539,7 +544,7 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
-        std::cout << "Looking for column " << ident << " to send over." << std::endl;
+        // std::cout << "Looking for column " << ident << " to send over." << std::endl;
         auto col_info_it = cols.find(ident);
 
         // TODO: Make this function threadsafe.
@@ -595,7 +600,7 @@ DataCatalog::DataCatalog() {
 
             // Increment offset after setting message variables
             info->curr_offset += chunk_size;
-            std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
+            // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
 
             ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk));
 
@@ -654,7 +659,7 @@ DataCatalog::DataCatalog() {
 
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
             ++col->received_chunks;
-            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
+            // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         }
         if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;

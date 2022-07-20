@@ -145,7 +145,7 @@ struct col_t {
         }
         ++requested_chunks;
 
-        std::cout << "Col is requesting a new chunk." << std::endl;
+        // std::cout << "Col is requesting a new chunk." << std::endl;
         DataCatalog::getInstance().fetchColStub(1, ident, false);
     }
 
