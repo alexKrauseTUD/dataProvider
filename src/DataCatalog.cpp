@@ -2,6 +2,92 @@
 #include <DataCatalog.h>
 #include <TaskManager.h>
 
+uint64_t bench_1_1(bool remote) {
+    col_t* lo_orderdate;
+    col_t* lo_discount;
+    col_t* lo_quantity;
+    col_t* lo_extendedprice;
+
+    col_t* d_datekey;
+    col_t* d_year;
+
+    if (remote) {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+
+        lo_orderdate = DataCatalog::getInstance().find_remote("lo_orderdate");
+        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+
+        d_datekey = DataCatalog::getInstance().find_remote("d_datekey");
+        d_year = DataCatalog::getInstance().find_remote("d_year");
+    } else {
+        lo_orderdate = DataCatalog::getInstance().find_local("lo_orderdate");
+        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
+        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
+        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
+
+        d_datekey = DataCatalog::getInstance().find_local("d_datekey");
+        d_year = DataCatalog::getInstance().find_local("d_year");
+    }
+
+    std::vector<size_t> relevant_d;
+    relevant_d.reserve(d_year->size);
+
+    auto d_year_start = reinterpret_cast<uint64_t*>(d_year->data);
+    size_t idx = 0;
+    for (auto ptr = d_year_start; ptr < d_year_start + d_year->size; ++ptr) {
+        if (*ptr == 93) {
+            relevant_d.push_back(idx);
+        }
+        ++idx;
+    }
+
+    uint64_t sum = 0;
+
+    auto lo_discount_start = reinterpret_cast<uint64_t*>(lo_discount->data);
+    auto lo_quantity_start = reinterpret_cast<uint64_t*>(lo_quantity->data);
+    auto lo_orderdate_start = reinterpret_cast<uint64_t*>(lo_orderdate->data);
+    auto lo_extendedprice_start = reinterpret_cast<uint64_t*>(lo_extendedprice->data);
+    auto d_datekey_start = reinterpret_cast<uint64_t*>(d_datekey->data);
+
+    for (size_t idx_l = 0; idx_l < lo_discount->size; ++idx_l) {
+        if (10 <= *(lo_discount_start + idx_l) <= 30 && *(lo_quantity_start + idx_l) < 25) {
+            uint64_t orderdate = *(lo_orderdate_start + idx_l);
+            for (auto idx_d : relevant_d) {
+                if (orderdate == *(d_datekey_start + idx_d)) {
+                    sum += ((*(lo_extendedprice_start + idx_l)) * (*(lo_discount_start + idx_l)));
+                }
+            }
+        }
+    }
+
+    return sum;
+}
+
+void executeBenchmarkingQueries() {
+    uint64_t sum;
+
+    //local
+    auto s_ts = std::chrono::high_resolution_clock::now();
+    sum = bench_1_1(false);
+    auto e_ts = std::chrono::high_resolution_clock::now();
+
+    typedef std::chrono::duration<double> d_sec;
+    d_sec secs = e_ts - s_ts;
+
+    std::cout << secs.count() << "\t" << sum << std::endl;
+
+    //remote
+    s_ts = std::chrono::high_resolution_clock::now();
+    sum = bench_1_1(true);
+    e_ts = std::chrono::high_resolution_clock::now();
+
+    secs = e_ts - s_ts;
+
+    std::cout << secs.count() << "\t" << sum << std::endl;
+}
+
 DataCatalog::DataCatalog() {
     auto createColLambda = [this]() -> void {
         std::cout << "[DataCatalog]";
@@ -16,7 +102,7 @@ DataCatalog::DataCatalog() {
         std::cin >> dataType;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
-        std::cout << "How mana data elements?" << std::endl;
+        std::cout << "How many data elements?" << std::endl;
         std::cin >> elemCnt;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -135,11 +221,14 @@ DataCatalog::DataCatalog() {
         }
     };
 
+    auto benchQueries = [this]() -> void { executeBenchmarkingQueries(); };
+
     TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
+    TaskManager::getInstance().registerTask(new Task("benchmark", "[DataCatalog] Execute benchmarking Queries", benchQueries));
 
     /* Message Layout
      * [ header_t | payload ]
@@ -193,7 +282,7 @@ DataCatalog::DataCatalog() {
     CallbackFunction cb_receiveInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
-        
+
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
         data += sizeof(size_t);
@@ -306,7 +395,7 @@ DataCatalog::DataCatalog() {
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
         data += sizeof(size_t);
-        
+
         std::string ident(data, identSz);
         data += identSz;
 
