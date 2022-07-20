@@ -68,7 +68,7 @@ uint64_t bench_1_1(bool remote) {
 void executeBenchmarkingQueries() {
     uint64_t sum;
 
-    //local
+    // local
     auto s_ts = std::chrono::high_resolution_clock::now();
     sum = bench_1_1(false);
     auto e_ts = std::chrono::high_resolution_clock::now();
@@ -78,7 +78,7 @@ void executeBenchmarkingQueries() {
 
     std::cout << secs.count() << "\t" << sum << std::endl;
 
-    //remote
+    // remote
     s_ts = std::chrono::high_resolution_clock::now();
     sum = bench_1_1(true);
     e_ts = std::chrono::high_resolution_clock::now();
@@ -322,11 +322,7 @@ DataCatalog::DataCatalog() {
                 std::cin >> ident;
                 std::cin.clear();
                 std::cin.ignore(10000, '\n');
-                char* payload = (char*)malloc(ident.size() + sizeof(size_t));
-                const size_t sz = ident.size();
-                memcpy(payload, &sz, sizeof(size_t));
-                memcpy(payload + sizeof(size_t), ident.c_str(), sz);
-                ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_column_data));
+                fetchColStub(conId, ident);
             };
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
@@ -430,6 +426,50 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+        }
+    };
+
+    // Send a chunk of a column to the requester
+    CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* column_data = data + head->payload_start;
+
+        size_t identSz;
+        memcpy(&identSz, data, sizeof(size_t));
+        data += sizeof(size_t);
+
+        std::string ident(data, identSz);
+
+        auto col_info_it = cols.find(ident);
+        auto inflight_info_it = inflight_cols.find(ident);
+
+        // Column is available
+        if (col_info_it != cols.end()) {
+            // // No intermediate for requested column. Creating a new entry in the dict.
+            // inflight_col_info_t info;
+            // if (inflight_info_it == inflight_cols.end()) {
+                
+            // }
+
+            // /* Message Layout
+            //  * [ header_t | ident_len, ident, col_data_type | col_data ]
+            //  */
+            // const size_t appMetaSize = sizeof(size_t) + identSz + sizeof(col_data_t);
+            // char* appMetaData = (char*)malloc(appMetaSize);
+            // char* tmp = appMetaData;
+
+            // memcpy(tmp, &identSz, sizeof(size_t));
+            // tmp += sizeof(size_t);
+
+            // memcpy(tmp, ident.c_str(), identSz);
+            // tmp += identSz;
+
+            // memcpy(tmp, &col->second->datatype, sizeof(col_data_t));
+
+            // ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data));
+
+            // free(appMetaData);
         }
     };
 
@@ -595,4 +635,12 @@ void DataCatalog::print_all_remotes() const {
         }
         std::cout << std::endl;
     }
+}
+
+void DataCatalog::fetchColStub(std::size_t conId, std::string& ident) const {
+    char* payload = (char*)malloc(ident.size() + sizeof(size_t));
+    const size_t sz = ident.size();
+    memcpy(payload, &sz, sizeof(size_t));
+    memcpy(payload + sizeof(size_t), ident.c_str(), sz);
+    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_column_data));
 }

@@ -80,7 +80,9 @@ enum class catalog_communication_code : uint8_t {
     send_column_info = 0xf0,
     receive_column_info = 0xf1,
     fetch_column_data = 0xf2,
-    receive_column_data = 0xf3
+    receive_column_data = 0xf3,
+    fetch_column_chunk = 0xf4,
+    receive_column_chunk = 0xf5
 };
 
 struct col_t {
@@ -276,14 +278,24 @@ struct col_t {
     }
 };
 
+struct inflight_col_info_t {
+    col_t* col;
+    std::size_t curr_offset;
+};
+
 typedef std::unordered_map<std::string, col_t*> col_dict_t;
 typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
+typedef std::unordered_map<std::string, inflight_col_info_t> incomplete_transimssions_dict_t;
+
 
 class DataCatalog {
    private:
     col_dict_t cols;
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
+
+    incomplete_transimssions_dict_t inflight_cols;
+
     DataCatalog();
     std::mutex appendLock;
 
@@ -306,4 +318,7 @@ class DataCatalog {
     void print_column(std::string& ident) const;
     void print_all() const;
     void print_all_remotes() const;
+
+    // Communication stubs
+    void fetchColStub( std::size_t conId, std::string& ident ) const;
 };
