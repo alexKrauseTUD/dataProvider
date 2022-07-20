@@ -1,3 +1,4 @@
+#include <Column.h>
 #include <ConnectionManager.h>
 #include <DataCatalog.h>
 #include <TaskManager.h>
@@ -208,6 +209,50 @@ DataCatalog::DataCatalog() {
         }
     };
 
+    auto iteratorTestLambda = [this]() -> void {
+        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        size_t locality;
+        std::cin >> locality;
+        std::cin.clear();
+        std::cin.ignore(10000, '\n');
+
+        col_dict_t dict;
+        switch (locality) {
+            case 1: {
+                this->print_all();
+                dict = cols;
+                break;
+            }
+            case 2: {
+                dict = remote_cols;
+                this->print_all_remotes();
+                break;
+            }
+            default: {
+                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                return;
+            }
+        }
+
+        std::string ident;
+        std::cout << "Which column?" << std::endl;
+        std::cin >> ident;
+        std::cin.clear();
+        std::cin.ignore(10000, '\n');
+
+        auto col_it = dict.find(ident);
+        if (col_it != dict.end()) {
+            auto cur_col = col_it->second;
+            std::size_t count = 0;
+            for ( auto it = cur_col->begin<uint64_t>(); it != cur_col->end<uint64_t>(); ++it ) {
+                count++;
+            }
+            std::cout << "I found " << count << " Elements. " << std::endl;
+        } else {
+            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+        }
+    };
+
     auto retrieveRemoteColsLambda = [this]() -> void {
         ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
     };
@@ -260,6 +305,7 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
     TaskManager::getInstance().registerTask(new Task("benchmark", "[DataCatalog] Execute benchmarking Queries", benchQueries));
+    TaskManager::getInstance().registerTask(new Task("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
 
     /* Message Layout
      * [ header_t | payload ]
@@ -482,7 +528,7 @@ DataCatalog::DataCatalog() {
     };
 
     // Send a chunk of a column to the requester
-   CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+    CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
         char* column_data = data + head->payload_start;
@@ -493,24 +539,27 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
+        std::cout << "Looking for column " << ident << " to send over." << std::endl;
         auto col_info_it = cols.find(ident);
-        auto inflight_info_it = inflight_cols.find(ident);
 
+        // TODO: Make this function threadsafe.
         // Column is available
         if (col_info_it != cols.end()) {
             inflight_col_info_t* info;
+
+            auto inflight_info_it = inflight_cols.find(ident);
             // No intermediate for requested column. Creating a new entry in the dict.
             if (inflight_info_it == inflight_cols.end()) {
                 inflight_col_info_t new_info;
                 new_info.col = col_info_it->second;
                 new_info.curr_offset = 0;
                 inflight_cols.insert({ident, new_info});
-                info = &inflight_cols.find( ident )->second;
+                info = &inflight_cols.find(ident)->second;
             } else {
                 info = &inflight_info_it->second;
             }
 
-            if (info->curr_offset == info->col->sizeInBytes) {
+            if (info->curr_offset == (info->col)->sizeInBytes) {
                 std::cout << "[DataCatalog] Column " << ident << " already transferred completely. Aborting." << std::endl;
                 return;
             }
@@ -579,15 +628,6 @@ DataCatalog::DataCatalog() {
         col_data_t data_type;
         memcpy(&data_type, data, sizeof(col_data_t));
 
-        std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
-        std::cout << "Received data for column: " << ident
-                  << " of type " << col_network_info::col_data_type_to_string(data_type)
-                  << ": " << head->current_payload_size
-                  << " Bytes of " << head->total_data_size
-                  << " current message offset to Base: " << head->payload_position_offset
-                  << " AppMetaDataSize: " << head->payload_start << " Bytes"
-                  << std::endl;
-
         auto col = find_remote(ident);
         auto col_network_info_iterator = remote_col_info.find(ident);
         // Column object already created?
@@ -613,9 +653,10 @@ DataCatalog::DataCatalog() {
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
+            ++col->received_chunks;
             std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
-        } 
-        if ( chunk_total_offset + head->current_payload_size == col->sizeInBytes ) {
+        }
+        if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;
             std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
@@ -668,6 +709,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
     }
 
     col_t* tmp = new col_t();
+    tmp->ident = ident;
     tmp->size = elemCount;
 
     std::default_random_engine generator;
@@ -680,6 +722,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
             }
+            tmp->readableOffset = elemCount * sizeof(uint8_t);
             break;
         }
         case col_data_t::gen_bigint: {
@@ -690,6 +733,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
             }
+            tmp->readableOffset = elemCount * sizeof(uint64_t);
             break;
         }
         case col_data_t::gen_float: {
@@ -700,6 +744,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
             }
+            tmp->readableOffset = elemCount * sizeof(float);
             break;
         }
         case col_data_t::gen_double: {
@@ -710,6 +755,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
             }
+            tmp->readableOffset = elemCount * sizeof(double);
             break;
         }
     }
@@ -744,6 +790,7 @@ col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
     } else {
         std::cout << "[DataCatalog] Creating new remote column: " << name << std::endl;
         col_t* col = new col_t();
+        col->ident = name;
         col->is_remote = true;
         col->datatype = (col_data_t)ni.type_info;
         col->allocate_aligned_internal((col_data_t)ni.type_info, ni.size_info);

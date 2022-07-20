@@ -8,6 +8,18 @@
 #include <string>
 #include <unordered_map>
 
+#include "ConnectionManager.h"
+
+enum class catalog_communication_code : uint8_t {
+    send_column_info = 0xf0,
+    receive_column_info = 0xf1,
+    fetch_column_data = 0xf2,
+    receive_column_data = 0xf3,
+    fetch_column_chunk = 0xf4,
+    receive_column_chunk = 0xf5,
+    column_chunk_complete = 0xf6
+};
+
 enum class col_data_t : unsigned char {
     gen_void,
     gen_float,
@@ -20,6 +32,10 @@ struct col_network_info {
     size_t size_info;
     col_data_t type_info;
     size_t received_bytes;
+    bool is_complete = false;
+
+    size_t reqeusted_chunks;
+    size_t received_chunks;
 
     col_network_info() = default;
 
@@ -31,6 +47,14 @@ struct col_network_info {
 
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
+
+    void fetchNextChunk() {
+        if ( reqeusted_chunks > received_chunks ) {
+            std::cout << "[CNI] Requesting new chunk with one inflight, ignored.";
+            return;
+        }
+        ++reqeusted_chunks;
+    }
 
     static std::string col_data_type_to_string(col_data_t info) {
         switch (info) {
@@ -76,208 +100,8 @@ struct col_network_info {
     }
 };
 
-enum class catalog_communication_code : uint8_t {
-    send_column_info = 0xf0,
-    receive_column_info = 0xf1,
-    fetch_column_data = 0xf2,
-    receive_column_data = 0xf3,
-    fetch_column_chunk = 0xf4,
-    receive_column_chunk = 0xf5,
-    column_chunk_complete = 0xf6
-};
 
-struct col_t {
-    void* data = nullptr;
-    col_data_t datatype = col_data_t::gen_void;
-    size_t size = 0;
-    size_t sizeInBytes = 0;
-    bool is_remote = false;
-    bool is_complete = false;
-    std::mutex appendLock;
-
-    ~col_t() {
-        delete reinterpret_cast<char*>(data);
-    }
-
-    template <typename T>
-    void allocate_aligned_internal(size_t _size) {
-        std::lock_guard<std::mutex> _lk(appendLock);
-        if (data == nullptr) {
-            size = _size;
-            data = aligned_alloc(alignof(T), _size * sizeof(T));
-            sizeInBytes = _size * sizeof(T);
-            //std::cout << "[col_t] Allocated " << _size * sizeof(T) << " bytes." << std::endl;
-        }
-    }
-
-    void allocate_aligned_internal(col_data_t type, size_t _size) {
-        switch (type) {
-            case col_data_t::gen_smallint: {
-                allocate_aligned_internal<uint8_t>(_size);
-                break;
-            }
-            case col_data_t::gen_bigint: {
-                allocate_aligned_internal<uint64_t>(_size);
-                break;
-            }
-            case col_data_t::gen_float: {
-                allocate_aligned_internal<float>(_size);
-                break;
-            }
-            case col_data_t::gen_double: {
-                allocate_aligned_internal<double>(_size);
-                break;
-            }
-            default: {
-                // std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
-            }
-        }
-    }
-
-    void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
-        std::lock_guard<std::mutex> _lk(appendLock);
-        if (data == nullptr) {
-            std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
-            return;
-        }
-        memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
-    }
-
-    std::string print_data_head() const {
-        switch (datatype) {
-            case col_data_t::gen_smallint: {
-                return print_data_head_typed<uint8_t*>();
-            }
-            case col_data_t::gen_bigint: {
-                return print_data_head_typed<uint64_t*>();
-            }
-            case col_data_t::gen_float: {
-                return print_data_head_typed<float*>();
-            }
-            case col_data_t::gen_double: {
-                return print_data_head_typed<double*>();
-            }
-            default: {
-                return "Error [strange datatype, nothing to print]";
-            }
-        }
-    }
-
-    std::string print_identity() const {
-        std::stringstream ss;
-        ss << size << " elements of type ";
-        switch (datatype) {
-            case col_data_t::gen_smallint: {
-                ss << "uint8_t"
-                   << " " << size * sizeof(uint8_t) << " Bytes";
-                break;
-            }
-            case col_data_t::gen_bigint: {
-                ss << "uint64_t"
-                   << " " << size * sizeof(uint64_t) << " Bytes";
-                break;
-            }
-            case col_data_t::gen_float: {
-                ss << "float"
-                   << " " << size * sizeof(float) << " Bytes";
-                break;
-            }
-            case col_data_t::gen_double: {
-                ss << "double"
-                   << " " << size * sizeof(double) << " Bytes";
-                break;
-            }
-        }
-        ss << " [" << (is_remote ? "remote," : "local,") << (is_complete ? "complete" : "incomplete") << "]"
-           << " CS: " << calc_checksum();
-        return std::move(ss.str());
-    }
-
-    size_t calc_checksum() const {
-        switch (datatype) {
-            case col_data_t::gen_smallint: {
-                return checksum<uint8_t>();
-            }
-            case col_data_t::gen_bigint: {
-                return checksum<uint64_t>();
-            }
-            case col_data_t::gen_float: {
-                return checksum<float>();
-            }
-            case col_data_t::gen_double: {
-                return checksum<double>();
-            }
-        }
-        return 0;
-    }
-
-    void log_to_file(std::string logfile) const {
-        switch (datatype) {
-            case col_data_t::gen_smallint: {
-                std::cout << "Printing uint8_t column" << std::endl;
-                log_to_file_typed<uint8_t>(logfile);
-                break;
-            }
-            case col_data_t::gen_bigint: {
-                std::cout << "Printing uint64_t column" << std::endl;
-                log_to_file_typed<uint64_t>(logfile);
-                break;
-            }
-            case col_data_t::gen_float: {
-                std::cout << "Printing float column" << std::endl;
-                log_to_file_typed<float>(logfile);
-                break;
-            }
-            case col_data_t::gen_double: {
-                std::cout << "Printing double column" << std::endl;
-                log_to_file_typed<double>(logfile);
-                break;
-            }
-        };
-    }
-
-   private:
-    template <typename T>
-    std::string print_data_head_typed() const {
-        std::stringstream ss;
-        ss << print_identity() << std::endl
-           << "\t";
-        auto tmp = static_cast<T>(data);
-        for (size_t i = 0; i < size && i < 10; ++i) {
-            if (datatype == col_data_t::gen_smallint) {
-                ss << " " << (uint64_t)tmp[i];
-            } else {
-                ss << " " << tmp[i];
-            }
-        }
-        return std::move(ss.str());
-    }
-
-    template <typename T>
-    size_t checksum() const {
-        size_t cs = 0;
-        const auto tmp = static_cast<const T*>(data);
-        for (size_t i = 0; i < size; ++i) {
-            cs += tmp[i];
-        }
-        return cs;
-    }
-
-    template <typename T>
-    void log_to_file_typed(std::string& logname) const {
-        const auto tmp = static_cast<const T*>(data);
-        std::ofstream log(logname);
-        for (size_t i = 0; i < size; ++i) {
-            if (datatype == col_data_t::gen_smallint) {
-                log << " " << (uint64_t)tmp[i];
-            } else {
-                log << " " << tmp[i];
-            }
-        }
-        log << std::endl;
-        log.close();
-    }
-};
+struct col_t;
 
 struct inflight_col_info_t {
     col_t* col;

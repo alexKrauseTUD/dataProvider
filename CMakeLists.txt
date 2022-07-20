@@ -23,7 +23,7 @@ file(GLOB_RECURSE HEADERS_RDMA ext/memoRDMA/include/*.h)
 add_library(memoLib ${SOURCES_RDMA} ${HEADERS_RDMA})
 target_link_libraries(memoLib ibverbs)
 
-include_directories(${CMAKE_SOURCE_DIR}/ext/memoRDMA ${CMAKE_SOURCE_DIR}/ext/memoRDMA/include())
+include_directories(${CMAKE_SOURCE_DIR}/ext/memoRDMA ${CMAKE_SOURCE_DIR}/ext/memoRDMA/include)
 
 add_executable(disaggDataProvider ${SOURCES} ${HEADERS})
 target_link_libraries(disaggDataProvider "pthread" "memoLib")
