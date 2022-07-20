@@ -506,7 +506,7 @@ DataCatalog::DataCatalog() {
     };
 
     // Send a chunk of a column to the requester
-    CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+   CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
         char* column_data = data + head->payload_start;
@@ -522,17 +522,21 @@ DataCatalog::DataCatalog() {
 
         // Column is available
         if (col_info_it != cols.end()) {
-            inflight_col_info_t info;
+            inflight_col_info_t* info;
             // No intermediate for requested column. Creating a new entry in the dict.
             if (inflight_info_it == inflight_cols.end()) {
-                info.col = col_info_it->second;
-                info.curr_offset = 0;
-                inflight_cols.insert({ident, info});
-            } else if (info.curr_offset == info.col->sizeInBytes) {
+                inflight_col_info_t new_info;
+                new_info.col = col_info_it->second;
+                new_info.curr_offset = 0;
+                inflight_cols.insert({ident, new_info});
+                info = &inflight_cols.find( ident )->second;
+            } else {
+                info = &inflight_info_it->second;
+            }
+
+            if (info->curr_offset == info->col->sizeInBytes) {
                 std::cout << "[DataCatalog] Column " << ident << " already transferred completely. Aborting." << std::endl;
                 return;
-            } else {
-                info = inflight_info_it->second;
             }
 
             /* Message Layout
@@ -543,7 +547,7 @@ DataCatalog::DataCatalog() {
             char* tmp = appMetaData;
 
             // Write chunk offset relative to column start into meta data
-            memcpy(tmp, &info.curr_offset, sizeof(size_t));
+            memcpy(tmp, &info->curr_offset, sizeof(size_t));
             tmp += sizeof(size_t);
 
             // Write size of following ident string into meta data
@@ -555,17 +559,18 @@ DataCatalog::DataCatalog() {
             tmp += identSz;
 
             // Append underlying column data type
-            memcpy(tmp, &info.col->datatype, sizeof(col_data_t));
+            memcpy(tmp, &info->col->datatype, sizeof(col_data_t));
 
             const size_t CHUNK_MAX_SIZE = 4096 * 4;  // 4 Pages
-            const size_t remaining_size = info.col->sizeInBytes - info.curr_offset;
+            const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
 
             // If we have at least 16k left to write, chunk size is 16k, rest otherwise.
             const size_t chunk_size = (remaining_size > CHUNK_MAX_SIZE) ? CHUNK_MAX_SIZE : remaining_size;
-            char* data_start = static_cast<char*>(info.col->data) + info.curr_offset;
+            char* data_start = static_cast<char*>(info->col->data) + info->curr_offset;
 
             // Increment offset after setting message variables
-            info.curr_offset += chunk_size;
+            info->curr_offset += chunk_size;
+            std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
 
             ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk));
 
@@ -598,14 +603,14 @@ DataCatalog::DataCatalog() {
         col_data_t data_type;
         memcpy(&data_type, data, sizeof(col_data_t));
 
-        // std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
-        // std::cout << "Received data for column: " << ident
-        //           << " of type " << col_network_info::col_data_type_to_string(data_type)
-        //           << ": " << head->current_payload_size
-        //           << " Bytes of " << head->total_data_size
-        //           << " current message offset to Base: " << head->payload_position_offset
-        //           << " AppMetaDataSize: " << head->payload_start << " Bytes"
-        //           << std::endl;
+        std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
+        std::cout << "Received data for column: " << ident
+                  << " of type " << col_network_info::col_data_type_to_string(data_type)
+                  << ": " << head->current_payload_size
+                  << " Bytes of " << head->total_data_size
+                  << " current message offset to Base: " << head->payload_position_offset
+                  << " AppMetaDataSize: " << head->payload_start << " Bytes"
+                  << std::endl;
 
         auto col = find_remote(ident);
         auto col_network_info_iterator = remote_col_info.find(ident);
@@ -632,8 +637,9 @@ DataCatalog::DataCatalog() {
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
-            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely.";
-        } else if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
+            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
+        } 
+        if ( chunk_total_offset + head->current_payload_size == col->sizeInBytes ) {
             col->is_complete = true;
             std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
