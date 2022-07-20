@@ -2,6 +2,18 @@
 #include <DataCatalog.h>
 #include <TaskManager.h>
 
+uint64_t* convertPointer(bool& remote, col_t* column, std::string ident) {
+    if (remote) {
+        while (!column || !column->is_complete) {
+            using namespace std::chrono_literals;
+            std::this_thread::sleep_for(1ns);
+            column = DataCatalog::getInstance().find_remote(ident);
+        }
+    }
+
+    return reinterpret_cast<uint64_t*>(column->data);
+}
+
 uint64_t bench_1_1(bool remote) {
     col_t* lo_orderdate;
     col_t* lo_discount;
@@ -13,12 +25,9 @@ uint64_t bench_1_1(bool remote) {
 
     if (remote) {
         ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
-        std::vector<std::string> idents;
-        idents.reserve(6);
-        idents = {"d_year", "lo_discount", "lo_quantity", "lo_orderdate", "lo_extendedprice", "d_datekey"};
+        std::vector<std::string> idents{"d_year", "lo_discount", "lo_quantity", "lo_orderdate", "lo_extendedprice", "d_datekey"};
 
         for (std::string& ident : idents) {
-            std::cout << ident << std::endl;
             DataCatalog::getInstance().fetchColStub(1, ident);
         }
         d_year = DataCatalog::getInstance().find_remote("d_year");
@@ -39,17 +48,11 @@ uint64_t bench_1_1(bool remote) {
         d_year = DataCatalog::getInstance().find_local("d_year");
     }
 
-    if (remote) {
-        while (!d_year || !d_year->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            d_year = DataCatalog::getInstance().find_remote("d_year");
-        }
-    }
+    auto d_year_start = convertPointer(remote, d_year, "d_year");
+
     std::vector<size_t> relevant_d;
     relevant_d.reserve(d_year->size);
 
-    auto d_year_start = reinterpret_cast<uint64_t*>(d_year->data);
     size_t idx = 0;
     for (auto ptr = d_year_start; ptr < d_year_start + d_year->size; ++ptr) {
         if (*ptr == 93) {
@@ -60,51 +63,11 @@ uint64_t bench_1_1(bool remote) {
 
     uint64_t sum = 0;
 
-    if (remote) {
-        while (!lo_discount || !lo_discount->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
-        }
-    }
-    auto lo_discount_start = reinterpret_cast<uint64_t*>(lo_discount->data);
-
-    if (remote) {
-        while (!lo_quantity || !lo_quantity->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
-        }
-    }
-    auto lo_quantity_start = reinterpret_cast<uint64_t*>(lo_quantity->data);
-
-    if (remote) {
-        while (!lo_orderdate || !lo_orderdate->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            lo_orderdate = DataCatalog::getInstance().find_remote("lo_orderdate");
-        }
-    }
-
-    auto lo_orderdate_start = reinterpret_cast<uint64_t*>(lo_orderdate->data);
-
-    if (remote) {
-        while (!lo_extendedprice || !lo_extendedprice->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
-        }
-    }
-    auto lo_extendedprice_start = reinterpret_cast<uint64_t*>(lo_extendedprice->data);
-
-    if (remote) {
-        while (!d_datekey || !d_datekey->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            d_datekey = DataCatalog::getInstance().find_remote("d_datekey");
-        }
-    }
-    auto d_datekey_start = reinterpret_cast<uint64_t*>(d_datekey->data);
+    auto lo_discount_start = convertPointer(remote, lo_discount, "lo_discount");
+    auto lo_quantity_start = convertPointer(remote, lo_quantity, "lo_quantity");
+    auto lo_orderdate_start = convertPointer(remote, lo_orderdate, "lo_orderdate");
+    auto lo_extendedprice_start = convertPointer(remote, lo_extendedprice, "lo_extendedprice");
+    auto d_datekey_start = convertPointer(remote, d_datekey, "d_datekey");
 
     for (size_t idx_l = 0; idx_l < lo_discount->size; ++idx_l) {
         if (10 <= *(lo_discount_start + idx_l) && *(lo_discount_start + idx_l) <= 30 && *(lo_quantity_start + idx_l) < 25) {
@@ -141,6 +104,19 @@ void executeBenchmarkingQueries() {
     secs = e_ts - s_ts;
 
     std::cout << secs.count() << "\t" << sum << std::endl;
+
+    DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    // remote after deleting columns
+    s_ts = std::chrono::high_resolution_clock::now();
+    sum = bench_1_1(true);
+    e_ts = std::chrono::high_resolution_clock::now();
+
+    secs = e_ts - s_ts;
+
+    std::cout << secs.count() << "\t" << sum << std::endl;
+
+    DataCatalog::getInstance().eraseAllRemoteColumns();
 }
 
 DataCatalog::DataCatalog() {
@@ -690,6 +666,25 @@ void DataCatalog::print_all_remotes() const {
         }
         std::cout << std::endl;
     }
+}
+
+void DataCatalog::eraseRemoteColumn(std::string ident) {
+    if (remote_cols.contains(ident)) {
+        delete remote_cols[ident];
+        remote_cols.erase(ident);
+    }
+    if (remote_col_info.contains(ident)) {
+        remote_col_info.erase(ident);
+    }
+}
+
+void DataCatalog::eraseAllRemoteColumns() {
+    for (auto col : remote_cols) {
+        eraseRemoteColumn(col.first);
+    }
+
+    remote_cols.clear();
+    remote_col_info.clear();
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident) const {

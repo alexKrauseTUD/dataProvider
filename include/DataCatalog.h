@@ -319,6 +319,9 @@ class DataCatalog {
     void print_all() const;
     void print_all_remotes() const;
 
+    void eraseRemoteColumn(std::string ident);
+    void eraseAllRemoteColumns();
+
     // Communication stubs
     void fetchColStub( std::size_t conId, std::string& ident ) const;
 };
