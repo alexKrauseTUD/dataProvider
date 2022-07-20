@@ -82,7 +82,8 @@ enum class catalog_communication_code : uint8_t {
     fetch_column_data = 0xf2,
     receive_column_data = 0xf3,
     fetch_column_chunk = 0xf4,
-    receive_column_chunk = 0xf5
+    receive_column_chunk = 0xf5,
+    column_chunk_complete = 0xf6
 };
 
 struct col_t {
