@@ -321,5 +321,5 @@ class DataCatalog {
     void print_all_remotes() const;
 
     // Communication stubs
-    void fetchColStub( std::size_t conId, std::string& ident ) const;
+    void fetchColStub( std::size_t conId, std::string& ident, bool whole_column = true ) const;
 };
