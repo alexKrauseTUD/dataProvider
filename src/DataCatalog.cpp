@@ -353,7 +353,28 @@ DataCatalog::DataCatalog() {
                 std::cin >> ident;
                 std::cin.clear();
                 std::cin.ignore(10000, '\n');
-                fetchColStub(conId, ident);
+
+                std::cout << "Fetch mode [1] whole column [2] (next) chunk" << std::endl;
+                size_t mode;
+                std::cin >> mode;
+                std::cin.clear();
+                std::cin.ignore(10000, '\n');
+
+                col_dict_t dict;
+                switch (mode) {
+                    case 1: {
+                        fetchColStub(conId, ident, true);
+                        break;
+                    }
+                    case 2: {
+                        fetchColStub(conId, ident, false);
+                        break;
+                    }
+                    default: {
+                        std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                        return;
+                    }
+                }
             };
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
@@ -461,7 +482,7 @@ DataCatalog::DataCatalog() {
     };
 
     // Send a chunk of a column to the requester
-    CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+   CallbackFunction cb_fetchColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
         char* column_data = data + head->payload_start;
@@ -477,30 +498,126 @@ DataCatalog::DataCatalog() {
 
         // Column is available
         if (col_info_it != cols.end()) {
-            // // No intermediate for requested column. Creating a new entry in the dict.
-            // inflight_col_info_t info;
-            // if (inflight_info_it == inflight_cols.end()) {
+            inflight_col_info_t* info;
+            // No intermediate for requested column. Creating a new entry in the dict.
+            if (inflight_info_it == inflight_cols.end()) {
+                inflight_col_info_t new_info;
+                new_info.col = col_info_it->second;
+                new_info.curr_offset = 0;
+                inflight_cols.insert({ident, new_info});
+                info = &inflight_cols.find( ident )->second;
+            } else {
+                info = &inflight_info_it->second;
+            }
 
-            // }
+            if (info->curr_offset == info->col->sizeInBytes) {
+                std::cout << "[DataCatalog] Column " << ident << " already transferred completely. Aborting." << std::endl;
+                return;
+            }
 
-            // /* Message Layout
-            //  * [ header_t | ident_len, ident, col_data_type | col_data ]
-            //  */
-            // const size_t appMetaSize = sizeof(size_t) + identSz + sizeof(col_data_t);
-            // char* appMetaData = (char*)malloc(appMetaSize);
-            // char* tmp = appMetaData;
+            /* Message Layout
+             * [ header_t | chunk_offset ident_len, ident, col_data_type | col_data ]
+             */
+            const size_t appMetaSize = sizeof(size_t) + sizeof(size_t) + identSz + sizeof(col_data_t);
+            char* appMetaData = (char*)malloc(appMetaSize);
+            char* tmp = appMetaData;
 
-            // memcpy(tmp, &identSz, sizeof(size_t));
-            // tmp += sizeof(size_t);
+            // Write chunk offset relative to column start into meta data
+            memcpy(tmp, &info->curr_offset, sizeof(size_t));
+            tmp += sizeof(size_t);
 
-            // memcpy(tmp, ident.c_str(), identSz);
-            // tmp += identSz;
+            // Write size of following ident string into meta data
+            memcpy(tmp, &identSz, sizeof(size_t));
+            tmp += sizeof(size_t);
 
-            // memcpy(tmp, &col->second->datatype, sizeof(col_data_t));
+            // Write ident string into meta data
+            memcpy(tmp, ident.c_str(), identSz);
+            tmp += identSz;
 
-            // ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data));
+            // Append underlying column data type
+            memcpy(tmp, &info->col->datatype, sizeof(col_data_t));
 
-            // free(appMetaData);
+            const size_t CHUNK_MAX_SIZE = 4096 * 4;  // 4 Pages
+            const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
+
+            // If we have at least 16k left to write, chunk size is 16k, rest otherwise.
+            const size_t chunk_size = (remaining_size > CHUNK_MAX_SIZE) ? CHUNK_MAX_SIZE : remaining_size;
+            char* data_start = static_cast<char*>(info->col->data) + info->curr_offset;
+
+            // Increment offset after setting message variables
+            info->curr_offset += chunk_size;
+            std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
+
+            ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk));
+
+            free(appMetaData);
+        }
+    };
+
+    /* Message Layout
+     * [ header_t | chunk_offset ident_len, ident, col_data_type | col_data ]
+     */
+    CallbackFunction cb_receiveColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        // Package header
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        // Start of AppMetaData
+        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        // Actual column data payload
+        char* column_data = data + head->payload_start;
+
+        size_t chunk_offset;
+        memcpy(&chunk_offset, data, sizeof(size_t));
+        data += sizeof(size_t);
+
+        size_t identSz;
+        memcpy(&identSz, data, sizeof(size_t));
+        data += sizeof(size_t);
+
+        std::string ident(data, identSz);
+        data += identSz;
+
+        col_data_t data_type;
+        memcpy(&data_type, data, sizeof(col_data_t));
+
+        std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
+        std::cout << "Received data for column: " << ident
+                  << " of type " << col_network_info::col_data_type_to_string(data_type)
+                  << ": " << head->current_payload_size
+                  << " Bytes of " << head->total_data_size
+                  << " current message offset to Base: " << head->payload_position_offset
+                  << " AppMetaDataSize: " << head->payload_start << " Bytes"
+                  << std::endl;
+
+        auto col = find_remote(ident);
+        auto col_network_info_iterator = remote_col_info.find(ident);
+        // Column object already created?
+        if (col == nullptr) {
+            // No Col object, did we even fetch remote info beforehand?
+            if (col_network_info_iterator != remote_col_info.end()) {
+                col = add_remote_column(ident, col_network_info_iterator->second);
+            } else {
+                std::cout << "[DataCatalog] No Network info for received column, fetch column info first -- discarding message" << std::endl;
+            }
+        }
+
+        /*
+         * chunk_offset / head->total_data_size denotes this is the n^th chunk
+         * head->payload_position_offset describes the position of this message
+         * inside the column chunk, if the buffer was not large enough to send the whole chunk.
+         */
+        const size_t chunk_total_offset = chunk_offset + head->payload_position_offset;
+
+        // Write currently received data to the column object
+        col->append_chunk(chunk_total_offset, head->current_payload_size, column_data);
+        // Update network info struct to check if we received all data
+        col_network_info_iterator->second.received_bytes += head->current_payload_size;
+
+        if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
+            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
+        } 
+        if ( chunk_total_offset + head->current_payload_size == col->sizeInBytes ) {
+            col->is_complete = true;
+            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
@@ -508,9 +625,12 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_info), cb_receiveInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_data), cb_fetchCol);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_data), cb_receiveCol);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_chunk), cb_fetchColChunk);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_chunk), cb_receiveColChunk);
 }
 
-DataCatalog& DataCatalog::getInstance() {
+DataCatalog&
+DataCatalog::getInstance() {
     static DataCatalog instance;
     return instance;
 }
@@ -687,11 +807,12 @@ void DataCatalog::eraseAllRemoteColumns() {
     remote_col_info.clear();
 }
 
-void DataCatalog::fetchColStub(std::size_t conId, std::string& ident) const {
+void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
     char* payload = (char*)malloc(ident.size() + sizeof(size_t));
     const size_t sz = ident.size();
     memcpy(payload, &sz, sizeof(size_t));
     memcpy(payload + sizeof(size_t), ident.c_str(), sz);
-    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_column_data));
+    catalog_communication_code code = wholeColumn ? catalog_communication_code::fetch_column_data : catalog_communication_code::fetch_column_chunk;
+    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code));
     free(payload);
 }

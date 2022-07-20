@@ -82,7 +82,8 @@ enum class catalog_communication_code : uint8_t {
     fetch_column_data = 0xf2,
     receive_column_data = 0xf3,
     fetch_column_chunk = 0xf4,
-    receive_column_chunk = 0xf5
+    receive_column_chunk = 0xf5,
+    column_chunk_complete = 0xf6
 };
 
 struct col_t {
@@ -323,5 +324,5 @@ class DataCatalog {
     void eraseAllRemoteColumns();
 
     // Communication stubs
-    void fetchColStub( std::size_t conId, std::string& ident ) const;
+    void fetchColStub( std::size_t conId, std::string& ident, bool whole_column = true ) const;
 };
