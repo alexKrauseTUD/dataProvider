@@ -33,9 +33,10 @@ struct col_t {
 
         void check_end() {
             if (
-                col->is_remote &&
-                (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->data) + col->readableOffset) &&
-                *this != col->end<T>()) {
+                col->is_remote &&                                                                            // no need to check for local columns
+                !col->is_complete &&                                                                         // column not fully loaded
+                (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->data) + col->readableOffset)  // Last readable element reached
+            ) {
                 std::unique_lock<std::mutex> lk(col->iteratorLock);
                 col->iteratorCv.wait(lk, [this] { return reinterpret_cast<char*>(data) != reinterpret_cast<char*>(col->data) + col->readableOffset; });
             }
@@ -49,7 +50,6 @@ struct col_t {
         }
 
         col_iterator_t operator++(int) {
-            request_next();
             col_iterator_t tmp = *this;
             ++(*this);
             check_end();
@@ -135,6 +135,18 @@ struct col_t {
                 std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
             }
         }
+    }
+
+    void request_all_data() {
+        std::lock_guard<std::mutex> _lk(iteratorLock);
+        if (requested_chunks > received_chunks) {
+            // Do Nothing, ignore.
+            return;
+        }
+        ++requested_chunks;
+
+        // std::cout << "Col is requesting a new chunk." << std::endl;
+        DataCatalog::getInstance().fetchColStub(1, ident, true);
     }
 
     void request_next_chunk() {
