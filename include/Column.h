@@ -9,7 +9,7 @@
 #include "DataCatalog.h"
 
 struct col_t {
-    template <typename T, bool chunk_iterator >
+    template <typename T, bool chunk_iterator>
     struct col_iterator_t {
        public:
         col_iterator_t(col_t* p_col, T* p_data)
@@ -28,7 +28,7 @@ struct col_t {
         void request_next() {
             if (chunk_iterator) {
                 if (col->is_remote &&
-                    (static_cast<char*>(col->data) + col->readableOffset) < reinterpret_cast<char*>(data) + 12288) {
+                    (static_cast<char*>(col->data) + col->readableOffset) < reinterpret_cast<char*>(data) + 4096 * 3) {
                     col->request_data(false);
                 }
             }
@@ -102,10 +102,10 @@ struct col_t {
     }
 
     template <typename T, bool chunked>
-    col_iterator_t<T,chunked> begin() {
+    col_iterator_t<T, chunked> begin() {
         std::unique_lock<std::mutex> lk(iteratorLock);
         iterator_data_available.wait(lk, [this] { return readableOffset > 0; });
-        return col_iterator_t<T,chunked>(
+        return col_iterator_t<T, chunked>(
             this,
             static_cast<T*>(data));
     }
@@ -113,7 +113,7 @@ struct col_t {
     template <typename T, bool chunked>
     col_iterator_t<T, chunked> end() {
         char* tmp = static_cast<char*>(data);
-        return col_iterator_t<T,chunked>(
+        return col_iterator_t<T, chunked>(
             this,
             reinterpret_cast<T*>(tmp + sizeInBytes));
     }
@@ -144,7 +144,7 @@ struct col_t {
 
     void request_data(bool fetch_complete_column) {
         std::lock_guard<std::mutex> _lk(iteratorLock);
-        if ( is_complete || requested_chunks > received_chunks ) {
+        if (is_complete || requested_chunks > received_chunks) {
             // Do Nothing, ignore.
             return;
         }

@@ -84,7 +84,7 @@ uint64_t bench_1_1(bool remote) {
 void executeBenchmarkingQueries() {
     uint64_t sum;
 
-    // local
+    // // local
     auto s_ts = std::chrono::high_resolution_clock::now();
     sum = bench_1_1<false>(false);
     auto e_ts = std::chrono::high_resolution_clock::now();
@@ -312,7 +312,7 @@ DataCatalog::DataCatalog() {
      * [ columnInfoCount | [col_network_info, identLength, ident]* ]
      */
     CallbackFunction cb_sendInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
-        std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
+        // std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = static_cast<uint8_t>(catalog_communication_code::receive_column_info);
         const size_t columnCount = cols.size();
 
@@ -321,7 +321,7 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
             totalPayloadSize += col.first.size();  // actual c_string
         }
-        std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
+        // std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
         char* data = (char*)malloc(totalPayloadSize);
         char* tmp = data;
 
@@ -363,7 +363,7 @@ DataCatalog::DataCatalog() {
         memcpy(&colCnt, data, sizeof(size_t));
         data += sizeof(size_t);
         std::stringstream ss;
-        ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
+        // ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
 
         col_network_info cni(0, col_data_t::gen_void);
         size_t identlen;
@@ -377,9 +377,9 @@ DataCatalog::DataCatalog() {
             std::string ident(data, identlen);
             data += identlen;
 
-            ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
+            // ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
             if (!remote_col_info.contains(ident)) {
-                ss << "Ident not found!";
+                // ss << "Ident not found!";
                 remote_col_info.insert({ident, cni});
                 if (!find_remote(ident)) {
                     add_remote_column(ident, cni);
@@ -433,7 +433,7 @@ DataCatalog::DataCatalog() {
             // TaskManager::getInstance().printAll();
             remoteInfoReady();
         }
-        std::cout << ss.str() << std::endl;
+        // std::cout << ss.str() << std::endl;
     };
 
     /* Extract column name and prepare sending its data
@@ -455,7 +455,7 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
-        std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
+        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
         auto col = cols.find(ident);
         if (col != cols.end()) {
             /* Message Layout
@@ -517,7 +517,7 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                // std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
                 return;
             }
         }
@@ -529,7 +529,7 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             ++col->received_chunks;
-            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+            // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
@@ -566,7 +566,7 @@ DataCatalog::DataCatalog() {
             }
 
             if (info->curr_offset == (info->col)->sizeInBytes) {
-                std::cout << "[DataCatalog] Column " << ident << " reset offset to 0." << std::endl;
+                // std::cout << "[DataCatalog] Column " << ident << " reset offset to 0." << std::endl;
                 info->curr_offset = 0;
             }
 
@@ -592,7 +592,7 @@ DataCatalog::DataCatalog() {
             // Append underlying column data type
             memcpy(tmp, &info->col->datatype, sizeof(col_data_t));
 
-            const size_t CHUNK_MAX_SIZE = 4096 * 4;  // 4 Pages
+            const size_t CHUNK_MAX_SIZE = 4096 * 8;  // 4 Pages
             const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
 
             // If we have at least 16k left to write, chunk size is 16k, rest otherwise.
@@ -664,11 +664,11 @@ DataCatalog::DataCatalog() {
                 col->is_complete = true;
             }
             ++col->received_chunks;
-            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
+            // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;
             ++col->received_chunks;
-            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+            // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
@@ -796,10 +796,10 @@ col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
     std::lock_guard<std::mutex> _lk(appendLock);
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
-        std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
+        // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
         return it->second;
     } else {
-        std::cout << "[DataCatalog] Creating new remote column: " << name << std::endl;
+        // std::cout << "[DataCatalog] Creating new remote column: " << name << std::endl;
         col_t* col = new col_t();
         col->ident = name;
         col->is_remote = true;
