@@ -15,7 +15,8 @@
 //     return reinterpret_cast<uint64_t*>(column->data);
 // }
 
-uint64_t bench_1_1(bool remote, bool chunked) {
+template <bool chunked>
+uint64_t bench_1_1(bool remote) {
     col_t* lo_orderdate;
     col_t* lo_discount;
     col_t* lo_quantity;
@@ -51,11 +52,11 @@ uint64_t bench_1_1(bool remote, bool chunked) {
         d_year = DataCatalog::getInstance().find_local("d_year");
     }
 
-    std::vector<col_t::col_iterator_t<uint64_t>> relevant_d;
+    std::vector<col_t::col_iterator_t<uint64_t, chunked>> relevant_d;
     relevant_d.reserve(d_year->size);
 
-    auto it_dd = d_datekey->begin<uint64_t>();
-    for (auto it_dy = d_year->begin<uint64_t>(); it_dy != d_year->end<uint64_t>(); ++it_dy, ++it_dd) {
+    auto it_dd = d_datekey->begin<uint64_t, chunked>();
+    for (auto it_dy = d_year->begin<uint64_t, chunked>(); it_dy != d_year->end<uint64_t, chunked>(); ++it_dy, ++it_dd) {
         if (*it_dy == 93) {
             relevant_d.push_back(it_dd);
         }
@@ -64,10 +65,10 @@ uint64_t bench_1_1(bool remote, bool chunked) {
     uint64_t sum = 0;
 
     size_t idx_l = 0;
-    auto it_lq = lo_quantity->begin<uint64_t>();
-    auto it_lo = lo_orderdate->begin<uint64_t>();
-    auto it_le = lo_extendedprice->begin<uint64_t>();
-    for (auto it_ld = lo_discount->begin<uint64_t>(); it_ld != lo_discount->end<uint64_t>(); ++it_ld, ++it_lq, ++it_lo, ++it_le) {
+    auto it_lq = lo_quantity->begin<uint64_t, chunked>();
+    auto it_lo = lo_orderdate->begin<uint64_t, chunked>();
+    auto it_le = lo_extendedprice->begin<uint64_t, chunked>();
+    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != lo_discount->end<uint64_t, chunked>(); ++it_ld, ++it_lq, ++it_lo, ++it_le) {
         if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
             for (auto it_dd : relevant_d) {
                 if (*it_lo == *it_dd) {
@@ -85,33 +86,33 @@ void executeBenchmarkingQueries() {
 
     // local
     auto s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(false, false);
+    sum = bench_1_1<false>(false);
     auto e_ts = std::chrono::high_resolution_clock::now();
 
     typedef std::chrono::duration<double> d_sec;
     d_sec secs = e_ts - s_ts;
 
-    std::cout << secs.count() << "\t" << sum << std::endl;
+    std::cout << "Local: " << secs.count() << "\t" << sum << std::endl;
 
     // remote
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(true, false);
+    sum = bench_1_1<false>(true);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
 
-    std::cout << secs.count() << "\t" << sum << std::endl;
+    std::cout << "Remote/Full: " << secs.count() << "\t" << sum << std::endl;
 
     DataCatalog::getInstance().eraseAllRemoteColumns();
 
     // remote after deleting columns + chunked
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(true, true);
+    sum = bench_1_1<true>(true);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
 
-    std::cout << secs.count() << "\t" << sum << std::endl;
+    std::cout << "Remote/Chunked: " << secs.count() << "\t" << sum << std::endl;
 
     DataCatalog::getInstance().eraseAllRemoteColumns();
 }
@@ -241,7 +242,7 @@ DataCatalog::DataCatalog() {
             auto cur_col = col_it->second;
             std::size_t count = 0;
             auto t_start = std::chrono::high_resolution_clock::now();
-            for (auto it = cur_col->begin<uint64_t>(); it != cur_col->end<uint64_t>(); ++it) {
+            for (auto it = cur_col->begin<uint64_t, true>(); it != cur_col->end<uint64_t, true>(); ++it) {
                 count++;
             }
             auto t_end = std::chrono::high_resolution_clock::now();
@@ -311,7 +312,7 @@ DataCatalog::DataCatalog() {
      * [ columnInfoCount | [col_network_info, identLength, ident]* ]
      */
     CallbackFunction cb_sendInfo = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
-        // std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
+        std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = static_cast<uint8_t>(catalog_communication_code::receive_column_info);
         const size_t columnCount = cols.size();
 
@@ -320,7 +321,7 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
             totalPayloadSize += col.first.size();  // actual c_string
         }
-        // std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
+        std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
         char* data = (char*)malloc(totalPayloadSize);
         char* tmp = data;
 
@@ -432,7 +433,7 @@ DataCatalog::DataCatalog() {
             // TaskManager::getInstance().printAll();
             remoteInfoReady();
         }
-        // std::cout << ss.str() << std::endl;
+        std::cout << ss.str() << std::endl;
     };
 
     /* Extract column name and prepare sending its data
@@ -454,7 +455,7 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
-        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
+        std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
         auto col = cols.find(ident);
         if (col != cols.end()) {
             /* Message Layout
@@ -528,7 +529,7 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             ++col->received_chunks;
-            // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
@@ -612,6 +613,7 @@ DataCatalog::DataCatalog() {
      * [ header_t | chunk_offset ident_len, ident, col_data_type | col_data ]
      */
     CallbackFunction cb_receiveColChunk = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        // std::cout << "[DataCatalog] Received a message with a (part of a) column chnunk." << std::endl;
         // Package header
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         // Start of AppMetaData
@@ -658,11 +660,14 @@ DataCatalog::DataCatalog() {
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
+            if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
+                col->is_complete = true;
+            }
             ++col->received_chunks;
-            // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
-        }
-        if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
+            std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
+        } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;
+            ++col->received_chunks;
             std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
@@ -779,6 +784,7 @@ col_t* DataCatalog::find_local(std::string ident) const {
 }
 
 col_t* DataCatalog::find_remote(std::string ident) const {
+    std::lock_guard<std::mutex> l(appendLock);
     auto it = remote_cols.find(ident);
     if (it != remote_cols.end()) {
         return (*it).second;
@@ -843,7 +849,7 @@ void DataCatalog::print_all_remotes() const {
 void DataCatalog::eraseRemoteColumn(std::string ident) {
     if (remote_cols.contains(ident)) {
         delete remote_cols[ident];
-        remote_cols.erase(ident);
+        // remote_cols.erase(ident);
     }
     if (remote_col_info.contains(ident)) {
         remote_col_info.erase(ident);

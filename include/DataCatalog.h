@@ -33,10 +33,6 @@ struct col_network_info {
     size_t size_info;
     col_data_t type_info;
     size_t received_bytes;
-    bool is_complete = false;
-
-    size_t reqeusted_chunks;
-    size_t received_chunks;
 
     col_network_info() = default;
 
@@ -48,14 +44,6 @@ struct col_network_info {
 
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
-
-    void fetchNextChunk() {
-        if ( reqeusted_chunks > received_chunks ) {
-            std::cout << "[CNI] Requesting new chunk with one inflight, ignored.";
-            return;
-        }
-        ++reqeusted_chunks;
-    }
 
     static std::string col_data_type_to_string(col_data_t info) {
         switch (info) {
@@ -120,13 +108,13 @@ class DataCatalog {
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
     bool col_info_received = false;
-    std::mutex remote_info_lock;
+    mutable std::mutex remote_info_lock;
+    mutable std::mutex appendLock;
     std::condition_variable remote_info_available;
 
     incomplete_transimssions_dict_t inflight_cols;
 
     DataCatalog();
-    std::mutex appendLock;
 
    public:
     static DataCatalog& getInstance();
