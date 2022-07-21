@@ -528,6 +528,7 @@ DataCatalog::DataCatalog() {
 
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
+            ++col->received_chunks;
             std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
