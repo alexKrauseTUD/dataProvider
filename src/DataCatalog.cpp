@@ -3,19 +3,19 @@
 #include <DataCatalog.h>
 #include <TaskManager.h>
 
-uint64_t* convertPointer(bool& remote, col_t* column, std::string ident) {
-    if (remote) {
-        while (!column || !column->is_complete) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1ns);
-            column = DataCatalog::getInstance().find_remote(ident);
-        }
-    }
+// uint64_t* convertPointer(bool& remote, col_t* column, std::string ident) {
+//     if (remote) {
+//         while (!column || !column->is_complete) {
+//             using namespace std::chrono_literals;
+//             std::this_thread::sleep_for(1ns);
+//             column = DataCatalog::getInstance().find_remote(ident);
+//         }
+//     }
 
-    return reinterpret_cast<uint64_t*>(column->data);
-}
+//     return reinterpret_cast<uint64_t*>(column->data);
+// }
 
-uint64_t bench_1_1(bool remote) {
+uint64_t bench_1_1(bool remote, bool chunked) {
     col_t* lo_orderdate;
     col_t* lo_discount;
     col_t* lo_quantity;
@@ -29,8 +29,9 @@ uint64_t bench_1_1(bool remote) {
         std::vector<std::string> idents{"d_year", "lo_discount", "lo_quantity", "lo_orderdate", "lo_extendedprice", "d_datekey"};
 
         for (std::string& ident : idents) {
-            DataCatalog::getInstance().fetchColStub(1, ident);
+            DataCatalog::getInstance().fetchColStub(1, ident, !chunked);
         }
+
         d_year = DataCatalog::getInstance().find_remote("d_year");
 
         lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
@@ -49,14 +50,12 @@ uint64_t bench_1_1(bool remote) {
         d_year = DataCatalog::getInstance().find_local("d_year");
     }
 
-    auto d_year_start = convertPointer(remote, d_year, "d_year");
-
     std::vector<size_t> relevant_d;
     relevant_d.reserve(d_year->size);
 
     size_t idx = 0;
-    for (auto ptr = d_year_start; ptr < d_year_start + d_year->size; ++ptr) {
-        if (*ptr == 93) {
+    for (auto it = d_year->begin<uint64_t>(); it != d_year->end<uint64_t>(); ++it) {
+        if (*it == 93) {
             relevant_d.push_back(idx);
         }
         ++idx;
@@ -64,13 +63,8 @@ uint64_t bench_1_1(bool remote) {
 
     uint64_t sum = 0;
 
-    auto lo_discount_start = convertPointer(remote, lo_discount, "lo_discount");
-    auto lo_quantity_start = convertPointer(remote, lo_quantity, "lo_quantity");
-    auto lo_orderdate_start = convertPointer(remote, lo_orderdate, "lo_orderdate");
-    auto lo_extendedprice_start = convertPointer(remote, lo_extendedprice, "lo_extendedprice");
-    auto d_datekey_start = convertPointer(remote, d_datekey, "d_datekey");
-
-    for (size_t idx_l = 0; idx_l < lo_discount->size; ++idx_l) {
+    size_t idx_l = 0;
+    for (auto it_l = lo_discount->begin<uint64_t>(); it_l != lo_discount->end<uint64_t>(); ++it_l) {
         if (10 <= *(lo_discount_start + idx_l) && *(lo_discount_start + idx_l) <= 30 && *(lo_quantity_start + idx_l) < 25) {
             uint64_t orderdate = *(lo_orderdate_start + idx_l);
             for (auto idx_d : relevant_d) {
@@ -89,7 +83,7 @@ void executeBenchmarkingQueries() {
 
     // local
     auto s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(false);
+    sum = bench_1_1(false, false);
     auto e_ts = std::chrono::high_resolution_clock::now();
 
     typedef std::chrono::duration<double> d_sec;
@@ -99,7 +93,7 @@ void executeBenchmarkingQueries() {
 
     // remote
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(true);
+    sum = bench_1_1(true, false);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
@@ -108,9 +102,9 @@ void executeBenchmarkingQueries() {
 
     DataCatalog::getInstance().eraseAllRemoteColumns();
 
-    // remote after deleting columns
+    // remote after deleting columns + chunked
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1(true);
+    sum = bench_1_1(true, true);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
@@ -249,7 +243,7 @@ DataCatalog::DataCatalog() {
                 count++;
             }
             auto t_end = std::chrono::high_resolution_clock::now();
-            std::cout << "I found " << count << " Elements in " << std::chrono::duration_cast<std::chrono::milliseconds>( t_end - t_start).count() << "ms" << std::endl;
+            std::cout << "I found " << count << " Elements in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
         } else {
             std::cout << "[DataCatalog] Invalid column name." << std::endl;
         }
