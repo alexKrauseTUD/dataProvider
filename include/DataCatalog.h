@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <condition_variable>
 
 #include "ConnectionManager.h"
 
@@ -118,6 +119,9 @@ class DataCatalog {
     col_dict_t cols;
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
+    bool col_info_received = false;
+    std::mutex remote_info_lock;
+    std::condition_variable remote_info_available;
 
     incomplete_transimssions_dict_t inflight_cols;
 
@@ -140,6 +144,8 @@ class DataCatalog {
     col_t* find_remote(std::string ident) const;
     col_t* add_remote_column(std::string name, col_network_info ni);
 
+    void remoteInfoReady();
+    void fetchRemoteInfo();
     void print_column(std::string& ident) const;
     void print_all() const;
     void print_all_remotes() const;

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
-#include <thread>
+#include <chrono>
 
 #include "DataCatalog.h"
 
@@ -27,7 +27,7 @@ struct col_t {
 
         void request_next() {
             if (col->is_remote && (static_cast<char*>(col->data) + col->readableOffset) < reinterpret_cast<char*>(data) + 12288) {
-                col->request_next_chunk();
+                col->request_data(false);
             }
         }
 
@@ -38,7 +38,7 @@ struct col_t {
                 (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->data) + col->readableOffset)  // Last readable element reached
             ) {
                 std::unique_lock<std::mutex> lk(col->iteratorLock);
-                col->iteratorCv.wait(lk, [this] { return reinterpret_cast<char*>(data) != reinterpret_cast<char*>(col->data) + col->readableOffset; });
+                col->iterator_data_available.wait(lk, [this] { return reinterpret_cast<char*>(data) != reinterpret_cast<char*>(col->data) + col->readableOffset; });
             }
         }
 
@@ -81,9 +81,13 @@ struct col_t {
     size_t received_chunks = 0;
     std::mutex iteratorLock;
     std::mutex appendLock;
-    std::condition_variable iteratorCv;
+    std::condition_variable iterator_data_available;
 
     ~col_t() {
+        while ( requested_chunks != received_chunks ) {
+            using namespace std::chrono_literals;
+            std::this_thread::sleep_for( 100ms );
+        }
         delete reinterpret_cast<char*>(data);
     }
 
@@ -100,6 +104,8 @@ struct col_t {
 
     template <typename T>
     col_iterator_t<T> begin() {
+        std::unique_lock<std::mutex> lk(iteratorLock);
+        iterator_data_available.wait(lk, [this] { return readableOffset > 0; });
         return col_iterator_t<T>(
             this,
             static_cast<T*>(data));
@@ -137,7 +143,7 @@ struct col_t {
         }
     }
 
-    void request_all_data() {
+    void request_data(bool fetch_complete_column) {
         std::lock_guard<std::mutex> _lk(iteratorLock);
         if (requested_chunks > received_chunks) {
             // Do Nothing, ignore.
@@ -146,31 +152,21 @@ struct col_t {
         ++requested_chunks;
 
         // std::cout << "Col is requesting a new chunk." << std::endl;
-        DataCatalog::getInstance().fetchColStub(1, ident, true);
-    }
-
-    void request_next_chunk() {
-        std::lock_guard<std::mutex> _lk(iteratorLock);
-        if (requested_chunks > received_chunks) {
-            // Do Nothing, ignore.
-            return;
-        }
-        ++requested_chunks;
-
-        // std::cout << "Col is requesting a new chunk." << std::endl;
-        DataCatalog::getInstance().fetchColStub(1, ident, false);
+        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column);
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
-        std::lock_guard<std::mutex> _lk_a(appendLock);
-        if (data == nullptr) {
-            std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
-            return;
+        {
+            std::lock_guard<std::mutex> _lk_a(appendLock);
+            if (data == nullptr) {
+                std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
+                return;
+            }
+            memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
         }
-        memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
         std::lock_guard<std::mutex> _lk_i(iteratorLock);
         readableOffset += chunkSize;
-        iteratorCv.notify_all();
+        iterator_data_available.notify_all();
     }
 
     std::string print_data_head() const {

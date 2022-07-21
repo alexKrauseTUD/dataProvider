@@ -25,21 +25,22 @@ uint64_t bench_1_1(bool remote, bool chunked) {
     col_t* d_year;
 
     if (remote) {
-        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
-        std::vector<std::string> idents{"d_year", "lo_discount", "lo_quantity", "lo_orderdate", "lo_extendedprice", "d_datekey"};
-
-        for (std::string& ident : idents) {
-            DataCatalog::getInstance().fetchColStub(1, ident, !chunked);
-        }
+        DataCatalog::getInstance().fetchRemoteInfo();
 
         d_year = DataCatalog::getInstance().find_remote("d_year");
+        d_year->request_data(!chunked);
 
         lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_discount->request_data(!chunked);
         lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_quantity->request_data(!chunked);
         lo_orderdate = DataCatalog::getInstance().find_remote("lo_orderdate");
+        lo_orderdate->request_data(!chunked);
         lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+        lo_extendedprice->request_data(!chunked);
 
         d_datekey = DataCatalog::getInstance().find_remote("d_datekey");
+        d_datekey->request_data(!chunked);
     } else {
         lo_orderdate = DataCatalog::getInstance().find_local("lo_orderdate");
         lo_discount = DataCatalog::getInstance().find_local("lo_discount");
@@ -50,26 +51,27 @@ uint64_t bench_1_1(bool remote, bool chunked) {
         d_year = DataCatalog::getInstance().find_local("d_year");
     }
 
-    std::vector<size_t> relevant_d;
+    std::vector<col_t::col_iterator_t<uint64_t>> relevant_d;
     relevant_d.reserve(d_year->size);
 
-    size_t idx = 0;
-    for (auto it = d_year->begin<uint64_t>(); it != d_year->end<uint64_t>(); ++it) {
-        if (*it == 93) {
-            relevant_d.push_back(idx);
+    auto it_dd = d_datekey->begin<uint64_t>();
+    for (auto it_dy = d_year->begin<uint64_t>(); it_dy != d_year->end<uint64_t>(); ++it_dy, ++it_dd) {
+        if (*it_dy == 93) {
+            relevant_d.push_back(it_dd);
         }
-        ++idx;
     }
 
     uint64_t sum = 0;
 
     size_t idx_l = 0;
-    for (auto it_l = lo_discount->begin<uint64_t>(); it_l != lo_discount->end<uint64_t>(); ++it_l) {
-        if (10 <= *(lo_discount_start + idx_l) && *(lo_discount_start + idx_l) <= 30 && *(lo_quantity_start + idx_l) < 25) {
-            uint64_t orderdate = *(lo_orderdate_start + idx_l);
-            for (auto idx_d : relevant_d) {
-                if (orderdate == *(d_datekey_start + idx_d)) {
-                    sum += ((*(lo_extendedprice_start + idx_l)) * (*(lo_discount_start + idx_l)));
+    auto it_lq = lo_quantity->begin<uint64_t>();
+    auto it_lo = lo_orderdate->begin<uint64_t>();
+    auto it_le = lo_extendedprice->begin<uint64_t>();
+    for (auto it_ld = lo_discount->begin<uint64_t>(); it_ld != lo_discount->end<uint64_t>(); ++it_ld, ++it_lq, ++it_lo, ++it_le) {
+        if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
+            for (auto it_dd : relevant_d) {
+                if (*it_lo == *it_dd) {
+                    sum += ((*it_le) * (*it_ld));
                 }
             }
         }
@@ -359,8 +361,8 @@ DataCatalog::DataCatalog() {
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
         data += sizeof(size_t);
-        // std::stringstream ss;
-        // ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
+        std::stringstream ss;
+        ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
 
         col_network_info cni(0, col_data_t::gen_void);
         size_t identlen;
@@ -374,8 +376,9 @@ DataCatalog::DataCatalog() {
             std::string ident(data, identlen);
             data += identlen;
 
-            // ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
+            ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
             if (!remote_col_info.contains(ident)) {
+                ss << "Ident not found!";
                 remote_col_info.insert({ident, cni});
                 if (!find_remote(ident)) {
                     add_remote_column(ident, cni);
@@ -426,7 +429,8 @@ DataCatalog::DataCatalog() {
                 TaskManager::getInstance().registerTask(new Task("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
                 std::cout << "[DataCatalog] Registered new Task!" << std::endl;
             }
-            TaskManager::getInstance().printAll();
+            // TaskManager::getInstance().printAll();
+            remoteInfoReady();
         }
         // std::cout << ss.str() << std::endl;
     };
@@ -512,7 +516,8 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column, fetch column info first -- discarding message" << std::endl;
+                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                return;
             }
         }
         // Write currently received data to the column object
@@ -523,7 +528,7 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             ++col->received_chunks;
-            std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+            // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
 
@@ -560,8 +565,8 @@ DataCatalog::DataCatalog() {
             }
 
             if (info->curr_offset == (info->col)->sizeInBytes) {
-                std::cout << "[DataCatalog] Column " << ident << " already transferred completely. Aborting." << std::endl;
-                return;
+                std::cout << "[DataCatalog] Column " << ident << " reset offset to 0." << std::endl;
+                info->curr_offset = 0;
             }
 
             /* Message Layout
@@ -636,7 +641,7 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column, fetch column info first -- discarding message" << std::endl;
+                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
             }
         }
 
@@ -863,3 +868,16 @@ void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool whole
     ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code));
     free(payload);
 }
+
+void DataCatalog::remoteInfoReady() {
+    std::lock_guard<std::mutex> lk(remote_info_lock);
+    col_info_received = true;
+    remote_info_available.notify_all();
+}
+
+void DataCatalog::fetchRemoteInfo() {
+    std::unique_lock<std::mutex> lk(remote_info_lock);
+    col_info_received = false;
+    ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+    remote_info_available.wait(lk, [this] { return col_info_received; });
+};
