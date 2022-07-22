@@ -96,7 +96,8 @@ uint64_t bench_2(bool remote) {
     size_t idx_l = 0;
     auto it_lq = lo_quantity->begin<uint64_t, chunked>();
     auto it_le = lo_extendedprice->begin<uint64_t, chunked>();
-    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != lo_discount->end<uint64_t, chunked>(); ++it_ld, ++it_lq, ++it_le) {
+    auto end_it = lo_discount->end<uint64_t, chunked>();
+    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != end_it; ++it_ld, ++it_lq, ++it_le) {
         if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
             sum += ((*it_le) * (*it_ld));
         }
@@ -295,31 +296,38 @@ DataCatalog::DataCatalog() {
 
         auto col_it = dict.find(ident);
         if (col_it != dict.end()) {
-            {
-                std::size_t count = 0;
-                auto cur_col = col_it->second;
-                auto t_start = std::chrono::high_resolution_clock::now();
-                cur_col->request_data(false);
-                for (auto it = cur_col->begin<uint64_t, true>(); it != cur_col->end<uint64_t, true>(); ++it) {
-                    count += *it;
+            for (size_t i = 0; i < 10; ++i) {
+                {
+                    std::size_t count = 0;
+                    auto cur_col = find_remote(ident);
+                    auto t_start = std::chrono::high_resolution_clock::now();
+                    cur_col->request_data(false);
+                    auto cur_end = cur_col->end<uint64_t, true>();
+                    for (auto it = cur_col->begin<uint64_t, true>(); it != cur_end; ++it) {
+                        count += *it;
+                    }
+                    auto t_end = std::chrono::high_resolution_clock::now();
+                    std::cout << "(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 << "ms" << std::endl;
+                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024 ) / (static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 / 1000 ) << "GB/s" << std::endl;
                 }
-                auto t_end = std::chrono::high_resolution_clock::now();
-                std::cout << "I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
-            }
-            eraseAllRemoteColumns();
-            fetchRemoteInfo();
-            {
-                std::size_t count = 0;
-                auto cur_col = find_remote(ident);
-                auto t_start = std::chrono::high_resolution_clock::now();
-                cur_col->request_data(true);
-                for (auto it = cur_col->begin<uint64_t, false>(); it != cur_col->end<uint64_t, false>(); ++it) {
-                    count += *it;
+                eraseAllRemoteColumns();
+                fetchRemoteInfo();
+                {
+                    std::size_t count = 0;
+                    auto cur_col = find_remote(ident);
+                    auto t_start = std::chrono::high_resolution_clock::now();
+                    cur_col->request_data(true);
+                    auto cur_end = cur_col->end<uint64_t, false>();
+                    for (auto it = cur_col->begin<uint64_t, false>(); it != cur_end; ++it) {
+                        count += *it;
+                    }
+                    auto t_end = std::chrono::high_resolution_clock::now();
+                    std::cout << "(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 << "ms" << std::endl;
+                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024 ) / (static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 / 1000 ) << "GB/s" << std::endl;
                 }
-                auto t_end = std::chrono::high_resolution_clock::now();
-                std::cout << "I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
+                eraseAllRemoteColumns();
+                fetchRemoteInfo();
             }
-            eraseAllRemoteColumns();
         } else {
             std::cout << "[DataCatalog] Invalid column name." << std::endl;
         }
@@ -602,7 +610,7 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             ++col->received_chunks;
-            col->advance_end_pointer( head->total_data_size );
+            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
@@ -738,12 +746,12 @@ DataCatalog::DataCatalog() {
                 col->is_complete = true;
             }
             ++col->received_chunks;
-            col->advance_end_pointer( head->total_data_size );
+            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;
             ++col->received_chunks;
-            col->advance_end_pointer( head->total_data_size );
+            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
@@ -940,6 +948,7 @@ void DataCatalog::eraseAllRemoteColumns() {
 
     remote_cols.clear();
     remote_col_info.clear();
+    std::cout << "All Remote data deleted." << std::endl;
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
