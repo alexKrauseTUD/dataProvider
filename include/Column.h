@@ -27,7 +27,7 @@ struct col_t {
 
         void request_next() {
             if (chunk_iterator) {
-                if (!col->is_complete && static_cast<char*>(col->current_end) < reinterpret_cast<char*>(data) + 1024 * 128) {
+                if (!col->is_complete && reinterpret_cast<char*>(col->current_end) <= reinterpret_cast<char*>(data) + CHUNK_MAX_SIZE) {
                     col->request_data(!chunk_iterator);
                 }
             }
@@ -39,13 +39,14 @@ struct col_t {
                 (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->current_end))  // Last readable element reached
             ) {
                 std::unique_lock<std::mutex> lk(col->iteratorLock);
+                // std::cout << "Stalling <" << (chunk_iterator ? "Chunked>" : "Full>") << std::endl;
                 col->iterator_data_available.wait(lk, [this] { return reinterpret_cast<char*>(data) < reinterpret_cast<char*>(col->current_end); });
             }
         }
 
         col_iterator_t& operator++() {
-            request_next();
             data++;
+            request_next();
             check_end();
             return *this;
         }
@@ -70,11 +71,11 @@ struct col_t {
     };
 
     void* data = nullptr;
+    void* current_end = nullptr;
     col_data_t datatype = col_data_t::gen_void;
     size_t size = 0;
     size_t sizeInBytes = 0;
     size_t readableOffset = 0;
-    void* current_end = nullptr;
     std::string ident = "";
     bool is_remote = false;
     bool is_complete = false;
@@ -102,7 +103,7 @@ struct col_t {
     template <typename T, bool chunked>
     col_iterator_t<T, chunked> begin() {
         std::unique_lock<std::mutex> lk(iteratorLock);
-        iterator_data_available.wait(lk, [this] { return readableOffset > 0; });
+        iterator_data_available.wait(lk, [this] { return current_end != data; });
         return col_iterator_t<T, chunked>(
             this,
             static_cast<T*>(data));
@@ -140,6 +141,7 @@ struct col_t {
         }
 
         memset(reinterpret_cast<char*>(data), 0, _size);
+        current_end = data;
     }
 
     void request_data(bool fetch_complete_column) {
@@ -155,17 +157,17 @@ struct col_t {
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
-        {
-            std::lock_guard<std::mutex> _lk_a(appendLock);
-            if (data == nullptr) {
-                std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
-                return;
-            }
-            memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
+        std::lock_guard<std::mutex> _lk_a(appendLock);
+        if (data == nullptr) {
+            std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
+            return;
         }
+        memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
+    }
+
+    void advance_end_pointer(size_t size) {
         std::lock_guard<std::mutex> _lk_i(iteratorLock);
-        readableOffset += chunkSize;
-        current_end = (void*)(reinterpret_cast<char*>(current_end) + chunkSize);
+        current_end = reinterpret_cast<void*>(reinterpret_cast<char*>(current_end) + size);
         iterator_data_available.notify_all();
     }
 

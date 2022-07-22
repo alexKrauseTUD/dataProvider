@@ -262,6 +262,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto iteratorTestLambda = [this]() -> void {
+        fetchRemoteInfo();
         std::cout << "Print info for [1] local [2] remote" << std::endl;
         size_t locality;
         std::cin >> locality;
@@ -294,14 +295,31 @@ DataCatalog::DataCatalog() {
 
         auto col_it = dict.find(ident);
         if (col_it != dict.end()) {
-            auto cur_col = col_it->second;
-            std::size_t count = 0;
-            auto t_start = std::chrono::high_resolution_clock::now();
-            for (auto it = cur_col->begin<uint64_t, true>(); it != cur_col->end<uint64_t, true>(); ++it) {
-                count++;
+            {
+                std::size_t count = 0;
+                auto cur_col = col_it->second;
+                auto t_start = std::chrono::high_resolution_clock::now();
+                cur_col->request_data(false);
+                for (auto it = cur_col->begin<uint64_t, true>(); it != cur_col->end<uint64_t, true>(); ++it) {
+                    count += *it;
+                }
+                auto t_end = std::chrono::high_resolution_clock::now();
+                std::cout << "I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
             }
-            auto t_end = std::chrono::high_resolution_clock::now();
-            std::cout << "I found " << count << " Elements in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
+            eraseAllRemoteColumns();
+            fetchRemoteInfo();
+            {
+                std::size_t count = 0;
+                auto cur_col = find_remote(ident);
+                auto t_start = std::chrono::high_resolution_clock::now();
+                cur_col->request_data(true);
+                for (auto it = cur_col->begin<uint64_t, false>(); it != cur_col->end<uint64_t, false>(); ++it) {
+                    count += *it;
+                }
+                auto t_end = std::chrono::high_resolution_clock::now();
+                std::cout << "I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count() << "ms" << std::endl;
+            }
+            eraseAllRemoteColumns();
         } else {
             std::cout << "[DataCatalog] Invalid column name." << std::endl;
         }
@@ -584,6 +602,7 @@ DataCatalog::DataCatalog() {
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
             ++col->received_chunks;
+            col->advance_end_pointer( head->total_data_size );
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
@@ -601,9 +620,9 @@ DataCatalog::DataCatalog() {
         std::string ident(data, identSz);
 
         // std::cout << "Looking for column " << ident << " to send over." << std::endl;
+        inflightLock.lock();
         auto col_info_it = cols.find(ident);
 
-        // TODO: Make this function threadsafe.
         // Column is available
         if (col_info_it != cols.end()) {
             inflight_col_info_t* info;
@@ -619,6 +638,7 @@ DataCatalog::DataCatalog() {
             } else {
                 info = &inflight_info_it->second;
             }
+            inflightLock.unlock();
 
             if (info->curr_offset == (info->col)->sizeInBytes) {
                 // std::cout << "[DataCatalog] Column " << ident << " reset offset to 0." << std::endl;
@@ -647,10 +667,8 @@ DataCatalog::DataCatalog() {
             // Append underlying column data type
             memcpy(tmp, &info->col->datatype, sizeof(col_data_t));
 
-            const size_t CHUNK_MAX_SIZE = 1024 * 256;  // 4 Pages
             const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
 
-            // If we have at least 16k left to write, chunk size is 16k, rest otherwise.
             const size_t chunk_size = (remaining_size > CHUNK_MAX_SIZE) ? CHUNK_MAX_SIZE : remaining_size;
             char* data_start = static_cast<char*>(info->col->data) + info->curr_offset;
 
@@ -662,6 +680,7 @@ DataCatalog::DataCatalog() {
 
             free(appMetaData);
         }
+        inflightLock.unlock();
     };
 
     /* Message Layout
@@ -719,10 +738,12 @@ DataCatalog::DataCatalog() {
                 col->is_complete = true;
             }
             ++col->received_chunks;
+            col->advance_end_pointer( head->total_data_size );
             // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
             col->is_complete = true;
             ++col->received_chunks;
+            col->advance_end_pointer( head->total_data_size );
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };

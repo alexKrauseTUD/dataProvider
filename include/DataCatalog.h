@@ -11,6 +11,8 @@
 
 #include "ConnectionManager.h"
 
+#define CHUNK_MAX_SIZE 1024 * 512
+
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xf0,
     receive_column_info = 0xf1,
@@ -110,6 +112,7 @@ class DataCatalog {
     bool col_info_received = false;
     mutable std::mutex remote_info_lock;
     mutable std::mutex appendLock;
+    mutable std::mutex inflightLock;
     std::condition_variable remote_info_available;
 
     incomplete_transimssions_dict_t inflight_cols;
