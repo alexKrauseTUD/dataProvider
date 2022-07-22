@@ -27,21 +27,19 @@ struct col_t {
 
         void request_next() {
             if (chunk_iterator) {
-                if (col->is_remote &&
-                    (static_cast<char*>(col->data) + col->readableOffset) < reinterpret_cast<char*>(data) + 4096 * 3) {
-                    col->request_data(false);
+                if (!col->is_complete && static_cast<char*>(col->current_end) < reinterpret_cast<char*>(data) + 1024 * 128) {
+                    col->request_data(!chunk_iterator);
                 }
             }
         }
 
         void check_end() {
             if (
-                col->is_remote &&                                                                            // no need to check for local columns
-                !col->is_complete &&                                                                         // column not fully loaded
-                (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->data) + col->readableOffset)  // Last readable element reached
+                !col->is_complete &&                                                          // column not fully loaded
+                (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->current_end))  // Last readable element reached
             ) {
                 std::unique_lock<std::mutex> lk(col->iteratorLock);
-                col->iterator_data_available.wait(lk, [this] { return reinterpret_cast<char*>(data) != reinterpret_cast<char*>(col->data) + col->readableOffset; });
+                col->iterator_data_available.wait(lk, [this] { return reinterpret_cast<char*>(data) < reinterpret_cast<char*>(col->current_end); });
             }
         }
 
@@ -55,7 +53,6 @@ struct col_t {
         col_iterator_t operator++(int) {
             col_iterator_t tmp = *this;
             ++(*this);
-            check_end();
             return tmp;
         }
 
@@ -77,6 +74,7 @@ struct col_t {
     size_t size = 0;
     size_t sizeInBytes = 0;
     size_t readableOffset = 0;
+    void* current_end = nullptr;
     std::string ident = "";
     bool is_remote = false;
     bool is_complete = false;
@@ -140,6 +138,8 @@ struct col_t {
                 std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
             }
         }
+
+        memset(reinterpret_cast<char*>(data), 0, _size);
     }
 
     void request_data(bool fetch_complete_column) {
@@ -165,6 +165,7 @@ struct col_t {
         }
         std::lock_guard<std::mutex> _lk_i(iteratorLock);
         readableOffset += chunkSize;
+        current_end = (void*)(reinterpret_cast<char*>(current_end) + chunkSize);
         iterator_data_available.notify_all();
     }
 

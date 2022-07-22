@@ -3,18 +3,6 @@
 #include <DataCatalog.h>
 #include <TaskManager.h>
 
-// uint64_t* convertPointer(bool& remote, col_t* column, std::string ident) {
-//     if (remote) {
-//         while (!column || !column->is_complete) {
-//             using namespace std::chrono_literals;
-//             std::this_thread::sleep_for(1ns);
-//             column = DataCatalog::getInstance().find_remote(ident);
-//         }
-//     }
-
-//     return reinterpret_cast<uint64_t*>(column->data);
-// }
-
 template <bool chunked>
 uint64_t bench_1_1(bool remote) {
     col_t* lo_orderdate;
@@ -81,22 +69,89 @@ uint64_t bench_1_1(bool remote) {
     return sum;
 }
 
+template <bool chunked>
+uint64_t bench_2(bool remote) {
+    col_t* lo_orderdate;
+    col_t* lo_discount;
+    col_t* lo_quantity;
+    col_t* lo_extendedprice;
+
+    if (remote) {
+        DataCatalog::getInstance().fetchRemoteInfo();
+
+        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_discount->request_data(!chunked);
+        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_quantity->request_data(!chunked);
+        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+        lo_extendedprice->request_data(!chunked);
+    } else {
+        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
+        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
+        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
+    }
+
+    uint64_t sum = 0;
+
+    size_t idx_l = 0;
+    auto it_lq = lo_quantity->begin<uint64_t, chunked>();
+    auto it_le = lo_extendedprice->begin<uint64_t, chunked>();
+    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != lo_discount->end<uint64_t, chunked>(); ++it_ld, ++it_lq, ++it_le) {
+        if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
+            sum += ((*it_le) * (*it_ld));
+        }
+    }
+
+    return sum;
+}
+
 void executeBenchmarkingQueries() {
     uint64_t sum;
 
-    // // local
+    // local
     auto s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1<false>(false);
+    // sum = bench_1_1<false>(false);
     auto e_ts = std::chrono::high_resolution_clock::now();
 
     typedef std::chrono::duration<double> d_sec;
     d_sec secs = e_ts - s_ts;
 
+    // std::cout << "Local: " << secs.count() << "\t" << sum << std::endl;
+
+    // // remote
+    // s_ts = std::chrono::high_resolution_clock::now();
+    // sum = bench_1_1<false>(true);
+    // e_ts = std::chrono::high_resolution_clock::now();
+
+    // secs = e_ts - s_ts;
+
+    // std::cout << "Remote/Full: " << secs.count() << "\t" << sum << std::endl;
+
+    // DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    // // remote after deleting columns + chunked
+    // s_ts = std::chrono::high_resolution_clock::now();
+    // sum = bench_1_1<true>(true);
+    // e_ts = std::chrono::high_resolution_clock::now();
+
+    // secs = e_ts - s_ts;
+
+    // std::cout << "Remote/Chunked: " << secs.count() << "\t" << sum << std::endl;
+
+    // DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    // local
+    s_ts = std::chrono::high_resolution_clock::now();
+    sum = bench_2<false>(false);
+    e_ts = std::chrono::high_resolution_clock::now();
+
+    secs = e_ts - s_ts;
+
     std::cout << "Local: " << secs.count() << "\t" << sum << std::endl;
 
     // remote
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1<false>(true);
+    sum = bench_2<false>(true);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
@@ -107,7 +162,7 @@ void executeBenchmarkingQueries() {
 
     // remote after deleting columns + chunked
     s_ts = std::chrono::high_resolution_clock::now();
-    sum = bench_1_1<true>(true);
+    sum = bench_2<true>(true);
     e_ts = std::chrono::high_resolution_clock::now();
 
     secs = e_ts - s_ts;
@@ -592,7 +647,7 @@ DataCatalog::DataCatalog() {
             // Append underlying column data type
             memcpy(tmp, &info->col->datatype, sizeof(col_data_t));
 
-            const size_t CHUNK_MAX_SIZE = 4096 * 8;  // 4 Pages
+            const size_t CHUNK_MAX_SIZE = 1024 * 256;  // 4 Pages
             const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
 
             // If we have at least 16k left to write, chunk size is 16k, rest otherwise.
@@ -857,6 +912,7 @@ void DataCatalog::eraseRemoteColumn(std::string ident) {
 }
 
 void DataCatalog::eraseAllRemoteColumns() {
+    std::lock_guard<std::mutex> _lk(appendLock);
     for (auto col : remote_cols) {
         eraseRemoteColumn(col.first);
     }
