@@ -157,7 +157,6 @@ struct col_t {
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
-        std::lock_guard<std::mutex> _lk_a(appendLock);
         if (data == nullptr) {
             std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
             return;

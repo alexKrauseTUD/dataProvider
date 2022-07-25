@@ -11,7 +11,7 @@
 
 #include "ConnectionManager.h"
 
-#define CHUNK_MAX_SIZE 1024 * 512
+#define CHUNK_MAX_SIZE 1024 * 512 * 4
 
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xf0,

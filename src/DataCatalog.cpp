@@ -301,14 +301,16 @@ DataCatalog::DataCatalog() {
                     std::size_t count = 0;
                     auto cur_col = find_remote(ident);
                     auto t_start = std::chrono::high_resolution_clock::now();
-                    cur_col->request_data(false);
-                    auto cur_end = cur_col->end<uint64_t, true>();
-                    for (auto it = cur_col->begin<uint64_t, true>(); it != cur_end; ++it) {
+                    cur_col->request_data(true);
+                    auto cur_end = cur_col->end<uint64_t, false>();
+                    auto it = cur_col->begin<uint64_t, false>();
+                    std::cout << "Starting..." << std::endl;
+                    for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024 ) / (static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 / 1000 ) << "GB/s" << std::endl;
+                    std::cout << "(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
+                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
@@ -316,14 +318,16 @@ DataCatalog::DataCatalog() {
                     std::size_t count = 0;
                     auto cur_col = find_remote(ident);
                     auto t_start = std::chrono::high_resolution_clock::now();
-                    cur_col->request_data(true);
-                    auto cur_end = cur_col->end<uint64_t, false>();
-                    for (auto it = cur_col->begin<uint64_t, false>(); it != cur_end; ++it) {
+                    cur_col->request_data(false);
+                    auto cur_end = cur_col->end<uint64_t, true>();
+                    auto it = cur_col->begin<uint64_t, true>();
+                    std::cout << "Starting..." << std::endl;
+                    for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024 ) / (static_cast<double>( std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count() ) / 1000 / 1000 ) << "GB/s" << std::endl;
+                    std::cout << "(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
+                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
@@ -608,9 +612,9 @@ DataCatalog::DataCatalog() {
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
+            col->advance_end_pointer(head->total_data_size);
             col->is_complete = true;
             ++col->received_chunks;
-            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
@@ -742,16 +746,17 @@ DataCatalog::DataCatalog() {
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
+            col->advance_end_pointer(head->total_data_size);
             if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
                 col->is_complete = true;
+                // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
             }
             ++col->received_chunks;
-            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
+            col->advance_end_pointer(head->total_data_size);
             col->is_complete = true;
             ++col->received_chunks;
-            col->advance_end_pointer(head->total_data_size);
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
         }
     };
