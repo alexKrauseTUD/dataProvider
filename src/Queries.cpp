@@ -105,6 +105,140 @@ uint64_t bench_2() {
     return sum;
 }
 
+template <bool remote, bool chunked>
+uint64_t bench_3() {
+    col_t* lo_orderdate;
+    col_t* lo_discount;
+    col_t* lo_quantity;
+    col_t* lo_extendedprice;
+
+    if (remote) {
+        DataCatalog::getInstance().fetchRemoteInfo();
+
+        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_discount->request_data(!chunked);
+
+        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_quantity->request_data(!chunked);
+
+        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+        lo_extendedprice->request_data(!chunked);
+    } else {
+        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
+        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
+        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
+    }
+
+    auto chunk_counts = [](col_t* col) {
+        std::stringstream ss;
+        ss << col->requested_chunks << "/" << col->received_chunks << " ";
+        return ss.str();
+    };
+
+    auto wait_col_data_ready = [](col_t* _col, char* _data) {
+        std::unique_lock<std::mutex> lk(_col->iteratorLock);
+        _col->iterator_data_available.wait(lk, [_col, _data] { return _col->requested_chunks == _col->received_chunks; });
+    };
+
+    auto between_ld = [lo_discount, wait_col_data_ready](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
+        if (remote) {
+            wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data));
+            if (chunked) {
+                lo_discount->request_data(!chunked);
+            }
+        }
+
+        std::vector<size_t> out_vec;
+        out_vec.reserve(elem_count);
+        for (size_t i = 0; i < elem_count; ++i) {
+            if (10 <= data[i] && data[i] <= 30) {
+                out_vec.push_back(i);
+            }
+        }
+        return out_vec;
+    };
+
+    auto lt_lq = [lo_quantity, wait_col_data_ready](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+        if (remote) {
+            wait_col_data_ready(lo_quantity, reinterpret_cast<char*>(data));
+            if (chunked) {
+                lo_quantity->request_data(!chunked);
+            }
+        }
+
+        std::vector<size_t> out_vec;
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] < 25) {
+                out_vec.push_back(e);
+            }
+        }
+        return out_vec;
+    };
+
+    auto gt_le = [lo_extendedprice, wait_col_data_ready](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+        if (remote) {
+            wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data));
+            if (chunked) {
+                lo_extendedprice->request_data(!chunked);
+            }
+        }
+
+        std::vector<size_t> out_vec;
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] > 5) {
+                out_vec.push_back(e);
+            }
+        }
+        return out_vec;
+    };
+
+    uint64_t* data_ld = static_cast<uint64_t*>(lo_discount->data);
+    uint64_t* data_lq = static_cast<uint64_t*>(lo_quantity->data);
+    uint64_t* data_le = static_cast<uint64_t*>(lo_extendedprice->data);
+
+    size_t max_elems_per_chunk = 0;
+    if (chunked) {
+        max_elems_per_chunk = CHUNK_MAX_SIZE / sizeof(uint64_t);
+    } else {
+        max_elems_per_chunk = lo_discount->size;
+    }
+
+    uint64_t* data_end = reinterpret_cast<uint64_t*>(static_cast<char*>(lo_discount->data) + lo_discount->sizeInBytes);
+
+    if (remote) {
+        wait_col_data_ready(lo_discount, static_cast<char*>(lo_discount->data));
+        wait_col_data_ready(lo_quantity, static_cast<char*>(lo_quantity->data));
+        wait_col_data_ready(lo_extendedprice, static_cast<char*>(lo_extendedprice->data));
+    }
+
+    uint64_t sum = 0;
+    size_t chunk = 0;
+    size_t base_offset = 0;
+
+    while (data_ld < data_end) {
+        const size_t elem_diff = data_end - data_ld;
+        if (elem_diff < max_elems_per_chunk) {
+            base_offset += chunk * max_elems_per_chunk;
+            max_elems_per_chunk = elem_diff;
+        } else {
+            base_offset += chunk * max_elems_per_chunk;
+        }
+
+        auto le_idx = gt_le(data_le, lt_lq(data_lq, between_ld(data_ld, max_elems_per_chunk)));
+        for (auto idx : le_idx) {
+            sum += base_offset + idx;  // fix idx for chunk vs full, hopefully
+        }
+        ++chunk;
+        data_ld = data_ld + max_elems_per_chunk;
+        data_lq = data_lq + max_elems_per_chunk;
+        data_le = data_le + max_elems_per_chunk;
+    }
+
+    return sum;
+}
+
 void executeBenchmarkingQuery_1() {
     uint64_t sum;
     std::chrono::_V2::system_clock::time_point s_ts;
@@ -607,7 +741,259 @@ void executeBenchmarkingQuery_2() {
     out.close();
 }
 
+void executeBenchmarkingQuery_3() {
+    uint64_t sum;
+    std::chrono::_V2::system_clock::time_point s_ts;
+    std::chrono::_V2::system_clock::time_point e_ts;
+    std::chrono::duration<double> secs;
+
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_1_1.log";
+    std::string logName = logNameStream.str();
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
+
+    // L, RF, RC
+    for (size_t i = 0; i < 10; ++i) {
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = bench_3<false, false>();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = bench_3<true, false>();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = bench_3<true, true>();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+    }
+
+    // // L, RC, RF
+    // for (size_t i = 0; i < 10; ++i) {
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<false, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, true>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+    // }
+
+    // // RF, L, RC
+    // for (size_t i = 0; i < 10; ++i) {
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<false, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, true>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+    // }
+
+    // // RF, RC, L
+    // for (size_t i = 0; i < 10; ++i) {
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, true>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<false, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+    // }
+
+    // // RC, RF, L
+    // for (size_t i = 0; i < 10; ++i) {
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, true>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<false, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+    // }
+
+    // //  RC, L, RF
+    // for (size_t i = 0; i < 10; ++i) {
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, true>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<false, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+
+    //     s_ts = std::chrono::high_resolution_clock::now();
+    //     sum = bench_3<true, false>();
+    //     e_ts = std::chrono::high_resolution_clock::now();
+
+    //     secs = e_ts - s_ts;
+
+    //     out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+    //         << std::flush;
+    //     std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+    //     DataCatalog::getInstance().eraseAllRemoteColumns();
+    // }
+
+    out.close();
+}
+
 void executeAllBenchmarkingQueries() {
-    executeBenchmarkingQuery_1();
-    executeBenchmarkingQuery_2();
+    // executeBenchmarkingQuery_1();
+    // executeBenchmarkingQuery_2();
+    executeBenchmarkingQuery_3();
 }
