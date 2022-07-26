@@ -1,9 +1,8 @@
 #include <Column.h>
 #include <ConnectionManager.h>
 #include <DataCatalog.h>
-#include <TaskManager.h>
 #include <Queries.h>
-
+#include <TaskManager.h>
 
 DataCatalog::DataCatalog() {
     auto createColLambda = [this]() -> void {
@@ -715,6 +714,7 @@ col_t* DataCatalog::find_remote(std::string ident) const {
 
 col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
     std::lock_guard<std::mutex> _lk(appendLock);
+    std::unique_lock<std::mutex> lk(remote_info_lock);
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
         // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
@@ -779,13 +779,14 @@ void DataCatalog::eraseRemoteColumn(std::string ident) {
 
 void DataCatalog::eraseAllRemoteColumns() {
     std::lock_guard<std::mutex> _lk(appendLock);
+    std::unique_lock<std::mutex> lk(remote_info_lock);
     for (auto col : remote_cols) {
         eraseRemoteColumn(col.first);
     }
 
     remote_cols.clear();
     remote_col_info.clear();
-    std::cout << "All Remote data deleted." << std::endl;
+    // std::cout << "All Remote data deleted." << std::endl;
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
@@ -808,5 +809,11 @@ void DataCatalog::fetchRemoteInfo() {
     std::unique_lock<std::mutex> lk(remote_info_lock);
     col_info_received = false;
     ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+    // while (!col_info_received) {
+    //     using namespace std::chrono_literals;
+    //     if (!remote_info_available.wait_for(lk, 1s, [this] { return col_info_received; })) {
+    //         ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+    //     }
+    // }
     remote_info_available.wait(lk, [this] { return col_info_received; });
 };

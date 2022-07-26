@@ -107,7 +107,6 @@ uint64_t bench_2() {
 
 template <bool remote, bool chunked>
 uint64_t bench_3() {
-    col_t* lo_orderdate;
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
@@ -137,14 +136,23 @@ uint64_t bench_3() {
 
     auto wait_col_data_ready = [](col_t* _col, char* _data) {
         std::unique_lock<std::mutex> lk(_col->iteratorLock);
-        _col->iterator_data_available.wait(lk, [_col, _data] { return _col->requested_chunks == _col->received_chunks; });
+        
+        while ( !(_data < static_cast<char*>(_col->current_end)) ) {
+            using namespace std::chrono_literals;
+            if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); }) ) {
+                std::cout << "retrying...(" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::flush;
+            }
+        }
+        // std::cout << "Done. (" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::endl;
     };
 
-    auto between_ld = [lo_discount, wait_col_data_ready](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
+    auto between_ld = [lo_discount, wait_col_data_ready,chunk_counts](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
         if (remote) {
+            // if (chunked) { std::cout << "Waiting LD..." << std::flush; }
             wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data));
             if (chunked) {
                 lo_discount->request_data(!chunked);
+                // std::cout << chunk_counts( lo_discount ) << std::flush;
             }
         }
 
@@ -158,11 +166,13 @@ uint64_t bench_3() {
         return out_vec;
     };
 
-    auto lt_lq = [lo_quantity, wait_col_data_ready](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+    auto lt_lq = [lo_quantity, wait_col_data_ready,chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
         if (remote) {
+            // if (chunked) { std::cout << "LQ..." << std::flush; }
             wait_col_data_ready(lo_quantity, reinterpret_cast<char*>(data));
             if (chunked) {
                 lo_quantity->request_data(!chunked);
+                // std::cout << chunk_counts( lo_quantity ) << std::flush;
             }
         }
 
@@ -176,12 +186,15 @@ uint64_t bench_3() {
         return out_vec;
     };
 
-    auto gt_le = [lo_extendedprice, wait_col_data_ready](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+    auto gt_le = [lo_extendedprice, wait_col_data_ready,chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
         if (remote) {
+            // if (chunked) { std::cout << "LE..." << std::flush; }
             wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data));
             if (chunked) {
                 lo_extendedprice->request_data(!chunked);
+                // std::cout << chunk_counts( lo_extendedprice ) << std::flush;
             }
+            // if (chunked) { std::cout << " Done." << std::endl; }
         }
 
         std::vector<size_t> out_vec;
@@ -208,9 +221,16 @@ uint64_t bench_3() {
     uint64_t* data_end = reinterpret_cast<uint64_t*>(static_cast<char*>(lo_discount->data) + lo_discount->sizeInBytes);
 
     if (remote) {
+        // std::cout << "Waiting LD..." << std::flush;
         wait_col_data_ready(lo_discount, static_cast<char*>(lo_discount->data));
+        // std::cout << chunk_counts( lo_discount ) << std::flush;
+        // std::cout << "LQ..." << std::flush;
         wait_col_data_ready(lo_quantity, static_cast<char*>(lo_quantity->data));
+        // std::cout << chunk_counts( lo_quantity ) << std::flush;
+        // std::cout << "LE..." << std::flush;
         wait_col_data_ready(lo_extendedprice, static_cast<char*>(lo_extendedprice->data));
+        // std::cout << chunk_counts( lo_extendedprice ) << std::flush;
+        // std::cout << "Done." << std::endl;
     }
 
     uint64_t sum = 0;
@@ -218,6 +238,7 @@ uint64_t bench_3() {
     size_t base_offset = 0;
 
     while (data_ld < data_end) {
+        // std::cout << "Iteration " << chunk << std::endl;
         const size_t elem_diff = data_end - data_ld;
         if (elem_diff < max_elems_per_chunk) {
             base_offset += chunk * max_elems_per_chunk;
@@ -228,7 +249,8 @@ uint64_t bench_3() {
 
         auto le_idx = gt_le(data_le, lt_lq(data_lq, between_ld(data_ld, max_elems_per_chunk)));
         for (auto idx : le_idx) {
-            sum += base_offset + idx;  // fix idx for chunk vs full, hopefully
+            // sum += base_offset + idx;  // fix idx for chunk vs full, hopefully
+            ++sum;
         }
         ++chunk;
         data_ld = data_ld + max_elems_per_chunk;
@@ -357,7 +379,7 @@ void executeBenchmarkingQuery_3() {
 
     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::stringstream logNameStream;
-    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_1_1.log";
+    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_3.log";
     std::string logName = logNameStream.str();
     std::ofstream out;
     out.open(logName, std::ios_base::app);
