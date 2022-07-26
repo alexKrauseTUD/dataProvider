@@ -105,6 +105,48 @@ uint64_t bench_2() {
     return sum;
 }
 
+using bench_func = std::function<uint64_t()>;
+
+void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& out) {
+    for (size_t i = 0; i < 10; ++i) {
+        auto s_ts = std::chrono::high_resolution_clock::now();
+        auto sum = f1();
+        auto e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f2();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f3();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+    }
+}
+
 void executeBenchmarkingQuery_1() {
     uint64_t sum;
     std::chrono::_V2::system_clock::time_point s_ts;
@@ -119,239 +161,22 @@ void executeBenchmarkingQuery_1() {
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
 
-    // L, RF, RC
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // L, RC, RF
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RF, L, RC
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RF, RC, L
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RC, RF, L
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    //  RC, L, RF
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_1_1<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
+    bench_func call_local = []() -> uint64_t {
+        return bench_1_1<false, false>();
+    };
+    bench_func call_remote_full = []() -> uint64_t {
+        return bench_1_1<true, false>();
+    };
+    bench_func call_remote_chunk = []() -> uint64_t {
+        return bench_1_1<true, true>();
+    };
+
+    doBenchmark(call_local, call_remote_full, call_remote_chunk, out);
+    doBenchmark(call_local, call_remote_chunk, call_remote_full, out);
+    doBenchmark(call_remote_full, call_local, call_remote_chunk, out);
+    doBenchmark(call_remote_full, call_remote_chunk, call_local, out);
+    doBenchmark(call_remote_chunk, call_remote_full, call_local, out);
+    doBenchmark(call_remote_chunk, call_local, call_remote_full, out);
 
     out.close();
 }
@@ -370,239 +195,22 @@ void executeBenchmarkingQuery_2() {
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
 
-    // L, RF, RC
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // L, RC, RF
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RF, L, RC
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RF, RC, L
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    // RC, RF, L
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
-
-    //  RC, L, RF
-    for (size_t i = 0; i < 10; ++i) {
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, true>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<false, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = bench_2<true, false>();
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-    }
+    bench_func call_local = []() -> uint64_t {
+        return bench_2<false, false>();
+    };
+    bench_func call_remote_full = []() -> uint64_t {
+        return bench_2<true, false>();
+    };
+    bench_func call_remote_chunk = []() -> uint64_t {
+        return bench_2<true, true>();
+    };
+
+    doBenchmark(call_local, call_remote_full, call_remote_chunk, out);
+    doBenchmark(call_local, call_remote_chunk, call_remote_full, out);
+    doBenchmark(call_remote_full, call_local, call_remote_chunk, out);
+    doBenchmark(call_remote_full, call_remote_chunk, call_local, out);
+    doBenchmark(call_remote_chunk, call_remote_full, call_local, out);
+    doBenchmark(call_remote_chunk, call_local, call_remote_full, out);
 
     out.close();
 }
