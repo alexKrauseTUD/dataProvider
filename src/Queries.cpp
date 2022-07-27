@@ -233,7 +233,7 @@ uint64_t bench_3() {
 
     size_t max_elems_per_chunk = 0;
     if (chunked) {
-        max_elems_per_chunk = DataCatalog::getInstance().chunkMaxSize / sizeof(uint64_t);
+        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t);
     } else {
         max_elems_per_chunk = lo_discount->size;
     }
@@ -295,9 +295,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         std::chrono::duration<double> secs = e_ts - s_ts;
 
-        out << ident1 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident1 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident1 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident1 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -307,9 +307,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         secs = e_ts - s_ts;
 
-        out << ident2 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident2 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident2 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident2 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -319,9 +319,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         secs = e_ts - s_ts;
 
-        out << ident3 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident3 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident3 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident3 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
     }

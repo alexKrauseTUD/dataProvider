@@ -12,16 +12,17 @@
 #include "ConnectionManager.h"
 
 enum class catalog_communication_code : uint8_t {
-    send_column_info = 0xf0,
-    receive_column_info = 0xf1,
-    fetch_column_data = 0xf2,
-    receive_column_data = 0xf3,
-    fetch_column_chunk = 0xf4,
-    receive_column_chunk = 0xf5,
-    fetch_pseudo_pax = 0xf6,
-    receive_pseudo_pax = 0xf7,
-    reconfigure_chunk_size = 0xf8,
-    ack_reconfigure_chunk_size = 0xf9
+    send_column_info = 0xA0,
+    receive_column_info,
+    fetch_column_data,
+    receive_column_data,
+    fetch_column_chunk,
+    receive_column_chunk,
+    fetch_pseudo_pax,
+    receive_pseudo_pax,
+    receive_last_pseudo_pax,
+    reconfigure_chunk_size,
+    ack_reconfigure_chunk_size
 };
 
 enum class col_data_t : unsigned char {
@@ -47,6 +48,26 @@ struct col_network_info {
 
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
+
+    bool is_complete() const {
+        return received_bytes == sizeInBytes();
+    }
+
+    size_t sizeInBytes() const {
+        switch (type_info) {
+            case col_data_t::gen_float:
+                return size_info * sizeof(float);
+            case col_data_t::gen_double:
+                return size_info * sizeof(double);
+            case col_data_t::gen_smallint:
+                return size_info * sizeof(uint8_t);
+            case col_data_t::gen_bigint:
+                return size_info * sizeof(uint64_t);
+            default:
+                std::cout << "[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;
+                return 0;
+        }
+    }
 
     static std::string col_data_type_to_string(col_data_t info) {
         switch (info) {
@@ -130,8 +151,8 @@ class DataCatalog {
     DataCatalog();
 
    public:
-    uint64_t chunkMaxSize = 1024 * 512 * 4;
-    uint64_t chunkThreshold = 1024 * 512 * 4;
+    uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
+    uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
 
     static DataCatalog& getInstance();
 
