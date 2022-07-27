@@ -65,12 +65,22 @@ uint64_t bench_1_1() {
         }
     }
 
+    // auto chunk_counts = [](col_t* col) {
+    //     std::stringstream ss;
+    //     ss << col->requested_chunks << "/" << col->received_chunks << " ";
+    //     return ss.str();
+    // };
+
+    // std::cout << chunk_counts(lo_orderdate);
+    // std::cout << chunk_counts(lo_discount);
+    // std::cout << chunk_counts(lo_quantity);
+    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
+
     return sum;
 }
 
 template <bool remote, bool chunked>
 uint64_t bench_2() {
-    col_t* lo_orderdate;
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
@@ -101,6 +111,16 @@ uint64_t bench_2() {
             sum += ((*it_le) * (*it_ld));
         }
     }
+
+    // auto chunk_counts = [](col_t* col) {
+    //     std::stringstream ss;
+    //     ss << col->requested_chunks << "/" << col->received_chunks << " ";
+    //     return ss.str();
+    // };
+
+    // std::cout << chunk_counts(lo_discount);
+    // std::cout << chunk_counts(lo_quantity);
+    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
 
     return sum;
 }
@@ -258,12 +278,16 @@ uint64_t bench_3() {
         data_le = data_le + max_elems_per_chunk;
     }
 
+    // std::cout << chunk_counts(lo_discount);
+    // std::cout << chunk_counts(lo_quantity);
+    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
+
     return sum;
 }
 
 using bench_func = std::function<uint64_t()>;
 
-void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& out) {
+void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ident1, std::string ident2, std::string ident3, std::ofstream& out) {
     for (size_t i = 0; i < 10; ++i) {
         auto s_ts = std::chrono::high_resolution_clock::now();
         auto sum = f1();
@@ -271,9 +295,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         std::chrono::duration<double> secs = e_ts - s_ts;
 
-        out << "Local\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident1 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Local\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident1 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -283,9 +307,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         secs = e_ts - s_ts;
 
-        out << "Remote\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident2 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Remote\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident2 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -295,9 +319,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         secs = e_ts - s_ts;
 
-        out << "Remote\tChunked\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << ident3 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Remote\tChunked\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << ident3 << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
     }
@@ -325,12 +349,12 @@ void executeBenchmarkingQuery_1(std::string logName) {
         return bench_1_1<true, true>();
     };
 
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, out);
+    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
+    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
 
     out.close();
 }
@@ -357,12 +381,12 @@ void executeBenchmarkingQuery_2(std::string logName) {
         return bench_2<true, true>();
     };
 
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, out);
+    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
+    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
 
     out.close();
 }
@@ -389,12 +413,12 @@ void executeBenchmarkingQuery_3(std::string logName) {
         return bench_3<true, true>();
     };
 
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, out);
+    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
+    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
+    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
+    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
 
     out.close();
 }

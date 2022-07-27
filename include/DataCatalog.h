@@ -154,7 +154,6 @@ class DataCatalog {
     void print_all() const;
     void print_all_remotes() const;
 
-    void eraseRemoteColumn(std::string ident);
     void eraseAllRemoteColumns();
 
     // Communication stubs

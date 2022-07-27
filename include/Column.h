@@ -91,7 +91,6 @@ struct col_t {
 
     template <typename T>
     void allocate_aligned_internal(size_t _size) {
-        std::lock_guard<std::mutex> _lk(appendLock);
         if (data == nullptr) {
             size = _size;
             data = aligned_alloc(alignof(T), _size * sizeof(T));
@@ -166,7 +165,6 @@ struct col_t {
     }
 
     void advance_end_pointer(size_t size) {
-        std::lock_guard<std::mutex> _lk_i(iteratorLock);
         current_end = reinterpret_cast<void*>(reinterpret_cast<char*>(current_end) + size);
         iterator_data_available.notify_all();
     }

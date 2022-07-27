@@ -330,7 +330,7 @@ DataCatalog::DataCatalog() {
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
         data += sizeof(size_t);
-        std::stringstream ss;
+        // std::stringstream ss;
         // ss << "[DataCatalog] Received data for " << colCnt << " columns" << std::endl;
 
         col_network_info cni(0, col_data_t::gen_void);
@@ -345,6 +345,7 @@ DataCatalog::DataCatalog() {
             std::string ident(data, identlen);
             data += identlen;
 
+            std::lock_guard<std::mutex> _lkb(remote_info_lock);
             // ss << "[DataCatalog] Column: " << ident << " - " << cni.size_info << " elements of type " << col_network_info::col_data_type_to_string(cni.type_info) << std::endl;
             if (!remote_col_info.contains(ident)) {
                 // ss << "Ident not found!";
@@ -478,7 +479,11 @@ DataCatalog::DataCatalog() {
         //           << std::endl;
 
         auto col = find_remote(ident);
+
+        remote_info_lock.lock();
         auto col_network_info_iterator = remote_col_info.find(ident);
+        remote_info_lock.unlock();
+
         // Column object already created?
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
@@ -604,15 +609,22 @@ DataCatalog::DataCatalog() {
         col_data_t data_type;
         memcpy(&data_type, data, sizeof(col_data_t));
 
+        remote_info_lock.lock();
         auto col = find_remote(ident);
+
         auto col_network_info_iterator = remote_col_info.find(ident);
+        remote_info_lock.unlock();
+
         // Column object already created?
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;
+                for (auto k : remote_col_info) {
+                    std::cout << k.first << " " << &k.second << std::endl;
+                }
             }
         }
 
@@ -628,6 +640,7 @@ DataCatalog::DataCatalog() {
         // Update network info struct to check if we received all data
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
+        std::lock_guard<std::mutex> lk(col->iteratorLock);
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
             col->advance_end_pointer(head->total_data_size);
             if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
@@ -1007,8 +1020,8 @@ col_t* DataCatalog::find_remote(std::string ident) const {
 }
 
 col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
-    // std::lock_guard<std::mutex> _lk(appendLock);
-    // std::unique_lock<std::mutex> lk(remote_info_lock);
+    std::lock_guard<std::mutex> _lka(appendLock);
+
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
         // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
@@ -1061,26 +1074,18 @@ void DataCatalog::print_all_remotes() const {
     }
 }
 
-void DataCatalog::eraseRemoteColumn(std::string ident) {
-    if (remote_cols.contains(ident)) {
-        delete remote_cols[ident];
-        // remote_cols.erase(ident);
-    }
-    if (remote_col_info.contains(ident)) {
-        remote_col_info.erase(ident);
-    }
-}
-
 void DataCatalog::eraseAllRemoteColumns() {
-    std::lock_guard<std::mutex> _lk(appendLock);
-    std::unique_lock<std::mutex> lk(remote_info_lock);
+    std::lock_guard<std::mutex> _lka(appendLock);
+    std::lock_guard<std::mutex> _lkb(remote_info_lock);
+    std::lock_guard<std::mutex> _lkc(inflightLock);
+
     for (auto col : remote_cols) {
-        eraseRemoteColumn(col.first);
+        delete col.second;
+        remote_col_info.erase(col.first);
     }
 
     remote_cols.clear();
     remote_col_info.clear();
-    // std::cout << "All Remote data deleted." << std::endl;
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
