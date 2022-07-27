@@ -221,7 +221,7 @@ DataCatalog::DataCatalog() {
         using namespace std::chrono_literals;
 
         for (uint8_t num_rb = 2; num_rb <= 4; ++num_rb) {
-            for (uint64_t bytes = 1ull << 10; bytes < 1ull << 25; bytes <<= 1) {
+            for (uint64_t bytes = 1ull << 14; bytes < 1ull << 25; bytes <<= 1) {
                 auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 std::stringstream logNameStream;
                 logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QueryBench_" << +num_rb << "_" << +bytes;
@@ -242,7 +242,7 @@ DataCatalog::DataCatalog() {
                 using namespace std::chrono_literals;
                 std::this_thread::sleep_for(1s);
 
-                for (uint64_t chunkSize = 1ull << 14; chunkSize < 1ull << 25; chunkSize <<= 1) {
+                for (uint64_t chunkSize = 1ull << 15; chunkSize < 1ull << 24; chunkSize <<= 1) {
                     chunkMaxSize = chunkSize;
                     chunkThreshold = chunkSize;
 

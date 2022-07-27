@@ -426,5 +426,5 @@ void executeBenchmarkingQuery_3(std::string logName) {
 void executeAllBenchmarkingQueries(std::string logName) {
     executeBenchmarkingQuery_1(logName);
     executeBenchmarkingQuery_2(logName);
-    // executeBenchmarkingQuery_3(logName);
+    executeBenchmarkingQuery_3(logName);
 }
