@@ -217,7 +217,53 @@ DataCatalog::DataCatalog() {
         fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
     };
 
-    auto benchQueries = [this]() -> void { executeAllBenchmarkingQueries(); };
+    auto benchQueries = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        for (uint8_t num_rb = 2; num_rb <= 4; ++num_rb) {
+            for (uint64_t bytes = 1ull << 10; bytes < 1ull << 25; bytes <<= 1) {
+                auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                std::stringstream logNameStream;
+                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QueryBench_" << +num_rb << "_" << +bytes;
+                std::string logName = logNameStream.str();
+
+                std::cout << "[Task] Set name: " << logName << std::endl;
+
+                buffer_config_t bufferConfig = {.num_own_receive = num_rb,
+                                                .size_own_receive = bytes + package_t::metaDataSize(),
+                                                .num_remote_receive = num_rb,
+                                                .size_remote_receive = bytes + package_t::metaDataSize(),
+                                                .size_own_send = (bytes + package_t::metaDataSize()) * num_rb,
+                                                .size_remote_send = (bytes + package_t::metaDataSize()) * num_rb,
+                                                .meta_info_size = 16};
+
+                ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+
+                using namespace std::chrono_literals;
+                std::this_thread::sleep_for(1s);
+
+                for (uint64_t chunkSize = 1ull << 14; chunkSize < 1ull << 25; chunkSize <<= 1) {
+                    chunkMaxSize = chunkSize;
+                    chunkThreshold = chunkSize;
+
+                    char* ptr = reinterpret_cast<char*>(&chunkSize);
+
+                    std::unique_lock<std::mutex> lk(reconfigure_lock);
+                    reconfigured = false;
+                    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
+                    reconfigure_done.wait(lk, [this] { return reconfigured; });
+
+                    std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+                    std::cout << std::endl;
+
+                    executeAllBenchmarkingQueries(logName);
+                }
+            }
+
+            std::cout << std::endl;
+            std::cout << "QueryBench ended." << std::endl;
+        }
+    };
 
     TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
@@ -518,7 +564,7 @@ DataCatalog::DataCatalog() {
 
             const size_t remaining_size = info->col->sizeInBytes - info->curr_offset;
 
-            const size_t chunk_size = (remaining_size > CHUNK_MAX_SIZE) ? CHUNK_MAX_SIZE : remaining_size;
+            const size_t chunk_size = (remaining_size > chunkMaxSize) ? chunkMaxSize : remaining_size;
             char* data_start = static_cast<char*>(info->col->data) + info->curr_offset;
 
             // Increment offset after setting message variables
@@ -693,7 +739,7 @@ DataCatalog::DataCatalog() {
             const size_t remaining_size = info->cols[0]->sizeInBytes - info->curr_offset;
 
             // How many bytes per column in this chunk - normalize to 8 Byte
-            const size_t max_bytes_per_column = ((CHUNK_MAX_SIZE / idents.size()) / 8) * 8;
+            const size_t max_bytes_per_column = ((chunkMaxSize / idents.size()) / 8) * 8;
             const size_t bytes_per_column = (remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size;
             std::cout << "BPC calc: (" << remaining_size << " > " << max_bytes_per_column << ") ? " << ((remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size);
 
@@ -707,12 +753,12 @@ DataCatalog::DataCatalog() {
             tmp += sizeof(ident_metainfo_size);
 
             // Create payload...must be somehow made better
-            char* payload = (char*) malloc( bytes_in_payload );
+            char* payload = (char*)malloc(bytes_in_payload);
             tmp = payload;
 
-            for ( auto cur_col : info->cols ) {
-                const char* col_data = reinterpret_cast<char*>( cur_col->data ) + info->curr_offset;
-                memcpy( tmp, col_data, bytes_per_column );
+            for (auto cur_col : info->cols) {
+                const char* col_data = reinterpret_cast<char*>(cur_col->data) + info->curr_offset;
+                memcpy(tmp, col_data, bytes_per_column);
                 tmp += bytes_per_column;
             }
 
@@ -810,6 +856,32 @@ DataCatalog::DataCatalog() {
         // }
     };
 
+    CallbackFunction cb_reconfigureChunkSize = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+
+        uint64_t newChunkSize;
+        memcpy(&newChunkSize, data, sizeof(uint64_t));
+        data += sizeof(uint64_t);
+
+        uint64_t newChunkThreshold;
+        memcpy(&newChunkThreshold, data, sizeof(uint64_t));
+
+        std::lock_guard<std::mutex> lk(reconfigure_lock);
+        if (newChunkSize > 0) {
+            chunkMaxSize = newChunkSize;
+            chunkThreshold = newChunkThreshold > 0 ? newChunkThreshold : newChunkSize;
+        }
+
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size));
+    };
+
+    CallbackFunction cb_ackReconfigureChunkSize = [this](size_t conId, ReceiveBuffer* rcv_buffer) -> void {
+        std::lock_guard<std::mutex> lk(reconfigure_lock);
+        reconfigured = true;
+        reconfigure_done.notify_all();
+    };
+
     registerCallback(static_cast<uint8_t>(catalog_communication_code::send_column_info), cb_sendInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_info), cb_receiveInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_data), cb_fetchCol);
@@ -818,6 +890,8 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_chunk), cb_receiveColChunk);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_pseudo_pax), cb_fetchPseudoPax);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), cb_receivePseudoPax);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), cb_reconfigureChunkSize);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size), cb_ackReconfigureChunkSize);
 }
 
 DataCatalog&
@@ -933,8 +1007,8 @@ col_t* DataCatalog::find_remote(std::string ident) const {
 }
 
 col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
-    std::lock_guard<std::mutex> _lk(appendLock);
-    std::unique_lock<std::mutex> lk(remote_info_lock);
+    // std::lock_guard<std::mutex> _lk(appendLock);
+    // std::unique_lock<std::mutex> lk(remote_info_lock);
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
         // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;

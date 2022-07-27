@@ -136,17 +136,17 @@ uint64_t bench_3() {
 
     auto wait_col_data_ready = [](col_t* _col, char* _data) {
         std::unique_lock<std::mutex> lk(_col->iteratorLock);
-        
-        while ( !(_data < static_cast<char*>(_col->current_end)) ) {
+
+        while (!(_data < static_cast<char*>(_col->current_end))) {
             using namespace std::chrono_literals;
-            if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); }) ) {
+            if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); })) {
                 std::cout << "retrying...(" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::flush;
             }
         }
         // std::cout << "Done. (" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::endl;
     };
 
-    auto between_ld = [lo_discount, wait_col_data_ready,chunk_counts](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
+    auto between_ld = [lo_discount, wait_col_data_ready, chunk_counts](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
         if (remote) {
             // if (chunked) { std::cout << "Waiting LD..." << std::flush; }
             wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data));
@@ -166,7 +166,7 @@ uint64_t bench_3() {
         return out_vec;
     };
 
-    auto lt_lq = [lo_quantity, wait_col_data_ready,chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+    auto lt_lq = [lo_quantity, wait_col_data_ready, chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
         if (remote) {
             // if (chunked) { std::cout << "LQ..." << std::flush; }
             wait_col_data_ready(lo_quantity, reinterpret_cast<char*>(data));
@@ -186,7 +186,7 @@ uint64_t bench_3() {
         return out_vec;
     };
 
-    auto gt_le = [lo_extendedprice, wait_col_data_ready,chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
+    auto gt_le = [lo_extendedprice, wait_col_data_ready, chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
         if (remote) {
             // if (chunked) { std::cout << "LE..." << std::flush; }
             wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data));
@@ -213,7 +213,7 @@ uint64_t bench_3() {
 
     size_t max_elems_per_chunk = 0;
     if (chunked) {
-        max_elems_per_chunk = CHUNK_MAX_SIZE / sizeof(uint64_t);
+        max_elems_per_chunk = DataCatalog::getInstance().chunkMaxSize / sizeof(uint64_t);
     } else {
         max_elems_per_chunk = lo_discount->size;
     }
@@ -271,9 +271,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         std::chrono::duration<double> secs = e_ts - s_ts;
 
-        out << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl
+        out << "Local\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Local\tFull\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Local\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -283,9 +283,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         secs = e_ts - s_ts;
 
-        out << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl
+        out << "Remote\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Remote\tFull\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Remote\tFull\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -295,24 +295,22 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::ofstream& 
 
         secs = e_ts - s_ts;
 
-        out << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl
+        out << "Remote\tChunked\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << "Remote\tChunked\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Remote\tChunked\t" << +DataCatalog::getInstance().chunkMaxSize << "\t" << +DataCatalog::getInstance().chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
     }
 }
 
-void executeBenchmarkingQuery_1() {
+void executeBenchmarkingQuery_1(std::string logName) {
     uint64_t sum;
     std::chrono::_V2::system_clock::time_point s_ts;
     std::chrono::_V2::system_clock::time_point e_ts;
     std::chrono::duration<double> secs;
 
-    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStream;
-    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_1_1.log";
-    std::string logName = logNameStream.str();
+    logName = logName + "_q1.log";
+
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
@@ -337,16 +335,14 @@ void executeBenchmarkingQuery_1() {
     out.close();
 }
 
-void executeBenchmarkingQuery_2() {
+void executeBenchmarkingQuery_2(std::string logName) {
     uint64_t sum;
     std::chrono::_V2::system_clock::time_point s_ts;
     std::chrono::_V2::system_clock::time_point e_ts;
     std::chrono::duration<double> secs;
 
-    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStream;
-    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_2.log";
-    std::string logName = logNameStream.str();
+    logName = logName + "_q2.log";
+
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
@@ -371,16 +367,14 @@ void executeBenchmarkingQuery_2() {
     out.close();
 }
 
-void executeBenchmarkingQuery_3() {
+void executeBenchmarkingQuery_3(std::string logName) {
     uint64_t sum;
     std::chrono::_V2::system_clock::time_point s_ts;
     std::chrono::_V2::system_clock::time_point e_ts;
     std::chrono::duration<double> secs;
 
-    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStream;
-    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "query_3.log";
-    std::string logName = logNameStream.str();
+    logName = logName + "_q3.log";
+
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
@@ -405,8 +399,8 @@ void executeBenchmarkingQuery_3() {
     out.close();
 }
 
-void executeAllBenchmarkingQueries() {
-    // executeBenchmarkingQuery_1();
-    // executeBenchmarkingQuery_2();
-    executeBenchmarkingQuery_3();
+void executeAllBenchmarkingQueries(std::string logName) {
+    executeBenchmarkingQuery_1(logName);
+    executeBenchmarkingQuery_2(logName);
+    // executeBenchmarkingQuery_3(logName);
 }

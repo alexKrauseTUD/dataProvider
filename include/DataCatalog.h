@@ -11,8 +11,6 @@
 
 #include "ConnectionManager.h"
 
-#define CHUNK_MAX_SIZE 1024 * 512 * 4
-
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xf0,
     receive_column_info = 0xf1,
@@ -21,7 +19,9 @@ enum class catalog_communication_code : uint8_t {
     fetch_column_chunk = 0xf4,
     receive_column_chunk = 0xf5,
     fetch_pseudo_pax = 0xf6,
-    receive_pseudo_pax = 0xf7
+    receive_pseudo_pax = 0xf7,
+    reconfigure_chunk_size = 0xf8,
+    ack_reconfigure_chunk_size = 0xf9
 };
 
 enum class col_data_t : unsigned char {
@@ -115,11 +115,14 @@ class DataCatalog {
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
     bool col_info_received = false;
+    bool reconfigured = false;
     mutable std::mutex remote_info_lock;
+    mutable std::mutex reconfigure_lock;
     mutable std::mutex appendLock;
     mutable std::mutex inflightLock;
     mutable std::mutex paxInflightLock;
     std::condition_variable remote_info_available;
+    std::condition_variable reconfigure_done;
 
     incomplete_transimssions_dict_t inflight_cols;
     incomplete_pax_transimssions_dict_t pax_inflight_cols;
@@ -127,6 +130,9 @@ class DataCatalog {
     DataCatalog();
 
    public:
+    uint64_t chunkMaxSize = 1024 * 512 * 4;
+    uint64_t chunkThreshold = 1024 * 512 * 4;
+
     static DataCatalog& getInstance();
 
     DataCatalog(DataCatalog const&) = delete;
