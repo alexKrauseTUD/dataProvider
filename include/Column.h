@@ -27,7 +27,7 @@ struct col_t {
 
         void request_next() {
             if (chunk_iterator) {
-                if (!col->is_complete && reinterpret_cast<char*>(col->current_end) <= reinterpret_cast<char*>(data) + DataCatalog::getInstance().chunkThreshold) {
+                if (!col->is_complete && reinterpret_cast<char*>(col->current_end) <= reinterpret_cast<char*>(data) + DataCatalog::getInstance().dataCatalog_chunkThreshold) {
                     col->request_data(!chunk_iterator);
                 }
             }
