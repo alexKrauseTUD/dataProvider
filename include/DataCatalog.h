@@ -1,5 +1,6 @@
 #pragma once
 
+#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -7,7 +8,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <condition_variable>
 
 #include "ConnectionManager.h"
 
@@ -20,7 +20,8 @@ enum class catalog_communication_code : uint8_t {
     receive_column_data = 0xf3,
     fetch_column_chunk = 0xf4,
     receive_column_chunk = 0xf5,
-    column_chunk_complete = 0xf6
+    fetch_pseudo_pax = 0xf6,
+    receive_pseudo_pax = 0xf7
 };
 
 enum class col_data_t : unsigned char {
@@ -91,7 +92,6 @@ struct col_network_info {
     }
 };
 
-
 struct col_t;
 
 struct inflight_col_info_t {
@@ -99,10 +99,15 @@ struct inflight_col_info_t {
     std::size_t curr_offset;
 };
 
+struct pax_inflight_col_info_t {
+    std::vector<col_t*> cols;
+    std::size_t curr_offset;
+};
+
 typedef std::unordered_map<std::string, col_t*> col_dict_t;
 typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
 typedef std::unordered_map<std::string, inflight_col_info_t> incomplete_transimssions_dict_t;
-
+typedef std::unordered_map<std::string, pax_inflight_col_info_t> incomplete_pax_transimssions_dict_t;
 
 class DataCatalog {
    private:
@@ -113,9 +118,11 @@ class DataCatalog {
     mutable std::mutex remote_info_lock;
     mutable std::mutex appendLock;
     mutable std::mutex inflightLock;
+    mutable std::mutex paxInflightLock;
     std::condition_variable remote_info_available;
 
     incomplete_transimssions_dict_t inflight_cols;
+    incomplete_pax_transimssions_dict_t pax_inflight_cols;
 
     DataCatalog();
 
@@ -145,5 +152,6 @@ class DataCatalog {
     void eraseAllRemoteColumns();
 
     // Communication stubs
-    void fetchColStub( std::size_t conId, std::string& ident, bool whole_column = true ) const;
+    void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
+    void fetchPseudoPax(std::size_t conId, std::vector<std::string> idents) const;
 };
