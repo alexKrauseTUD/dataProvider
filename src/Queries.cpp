@@ -381,14 +381,14 @@ uint64_t bench_4() {
 
     size_t max_elems_per_chunk = 0;
     if (paxed) {
-        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t);
+        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t) / 3;
     } else {
         max_elems_per_chunk = lo_discount->size;
     }
 
     uint64_t* data_end = reinterpret_cast<uint64_t*>(static_cast<char*>(lo_discount->data) + lo_discount->sizeInBytes);
 
-    if (remote) {
+    if (remote && !paxed) {
         // std::cout << "Waiting LD..." << std::flush;
         wait_col_data_ready(lo_discount, static_cast<char*>(lo_discount->data));
         // std::cout << chunk_counts( lo_discount ) << std::flush;
