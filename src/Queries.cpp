@@ -2,6 +2,221 @@
 #include <DataCatalog.h>
 #include <Queries.h>
 
+inline void wait_col_data_ready(col_t* _col, char* _data) {
+    std::unique_lock<std::mutex> lk(_col->iteratorLock);
+
+    while (!(_data < static_cast<char*>(_col->current_end))) {
+        using namespace std::chrono_literals;
+        if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); })) {
+            std::cout << "retrying...(" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::flush;
+        }
+    }
+    // std::cout << "Done. (" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::endl;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (data[e] < predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] < predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> less_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (data[e] <= predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] <= predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (data[e] > predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] > predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> greater_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (data[e] >= predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] >= predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (data[e] == predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (data[e] == predicate) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (predicate_1 <= data[e] && data[e] <= predicate_2) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (predicate_1 <= data[e] && data[e] <= predicate_2) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
+template <bool remote, bool chunked, bool prefetching, bool isFirst = false>
+inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+    auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
+    if (remote) {
+        if (!prefetching) column->request_data(!chunked);
+        wait_col_data_ready(column, reinterpret_cast<char*>(data));
+        if (prefetching) column->request_data(!chunked);
+    }
+
+    std::vector<size_t> out_vec;
+    if (isFirst) {
+        out_vec.reserve(column->size);
+        for (auto e = 0; e < blockSize; ++e) {
+            if (predicate_1 < data[e] && data[e] < predicate_2) {
+                out_vec.push_back(e);
+            }
+        }
+    } else {
+        out_vec.reserve(in_pos.size());
+        for (auto e : in_pos) {
+            if (predicate_1 < data[e] && data[e] < predicate_2) {
+                out_vec.push_back(e);
+            }
+        }
+    }
+
+    return out_vec;
+};
+
 template <bool remote, bool chunked>
 uint64_t bench_1_1() {
     col_t* lo_orderdate;
@@ -125,7 +340,7 @@ uint64_t bench_2() {
     return sum;
 }
 
-template <bool remote, bool chunked>
+template <bool remote, bool chunked, bool prefetching>
 uint64_t bench_3() {
     col_t* lo_discount;
     col_t* lo_quantity;
@@ -135,101 +350,16 @@ uint64_t bench_3() {
         DataCatalog::getInstance().fetchRemoteInfo();
 
         lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
-        lo_discount->request_data(!chunked);
-
+        if (prefetching) lo_discount->request_data(!chunked);
         lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
-        lo_quantity->request_data(!chunked);
-
+        if (prefetching) lo_quantity->request_data(!chunked);
         lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
-        lo_extendedprice->request_data(!chunked);
+        if (prefetching) lo_extendedprice->request_data(!chunked);
     } else {
         lo_discount = DataCatalog::getInstance().find_local("lo_discount");
         lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
         lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
     }
-
-    auto chunk_counts = [](col_t* col) {
-        std::stringstream ss;
-        ss << col->requested_chunks << "/" << col->received_chunks << " ";
-        return ss.str();
-    };
-
-    auto wait_col_data_ready = [](col_t* _col, char* _data) {
-        std::unique_lock<std::mutex> lk(_col->iteratorLock);
-
-        while (!(_data < static_cast<char*>(_col->current_end))) {
-            using namespace std::chrono_literals;
-            if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); })) {
-                std::cout << "retrying...(" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::flush;
-            }
-        }
-        // std::cout << "Done. (" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::endl;
-    };
-
-    auto between_ld = [lo_discount, wait_col_data_ready, chunk_counts](uint64_t* data, size_t elem_count) -> std::vector<size_t> {
-        if (remote) {
-            // if (chunked) { std::cout << "Waiting LD..." << std::flush; }
-            wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data));
-            if (chunked) {
-                lo_discount->request_data(!chunked);
-                // std::cout << chunk_counts( lo_discount ) << std::flush;
-            }
-        }
-
-        std::vector<size_t> out_vec;
-        out_vec.reserve(elem_count);
-        for (size_t i = 0; i < elem_count; ++i) {
-            if (10 <= data[i] && data[i] <= 30) {
-                out_vec.push_back(i);
-            }
-        }
-        return out_vec;
-    };
-
-    auto lt_lq = [lo_quantity, wait_col_data_ready, chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
-        if (remote) {
-            // if (chunked) { std::cout << "LQ..." << std::flush; }
-            wait_col_data_ready(lo_quantity, reinterpret_cast<char*>(data));
-            if (chunked) {
-                lo_quantity->request_data(!chunked);
-                // std::cout << chunk_counts( lo_quantity ) << std::flush;
-            }
-        }
-
-        std::vector<size_t> out_vec;
-        out_vec.reserve(in_pos.size());
-        for (auto e : in_pos) {
-            if (data[e] < 25) {
-                out_vec.push_back(e);
-            }
-        }
-        return out_vec;
-    };
-
-    auto gt_le = [lo_extendedprice, wait_col_data_ready, chunk_counts](uint64_t* data, std::vector<size_t> in_pos) -> std::vector<size_t> {
-        if (remote) {
-            // if (chunked) { std::cout << "LE..." << std::flush; }
-            wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data));
-            if (chunked) {
-                lo_extendedprice->request_data(!chunked);
-                // std::cout << chunk_counts( lo_extendedprice ) << std::flush;
-            }
-            // if (chunked) { std::cout << " Done." << std::endl; }
-        }
-
-        std::vector<size_t> out_vec;
-        out_vec.reserve(in_pos.size());
-        for (auto e : in_pos) {
-            if (data[e] > 5) {
-                out_vec.push_back(e);
-            }
-        }
-        return out_vec;
-    };
-
-    uint64_t* data_ld = static_cast<uint64_t*>(lo_discount->data);
-    uint64_t* data_lq = static_cast<uint64_t*>(lo_quantity->data);
-    uint64_t* data_le = static_cast<uint64_t*>(lo_extendedprice->data);
 
     size_t max_elems_per_chunk = 0;
     if (chunked) {
@@ -238,49 +368,29 @@ uint64_t bench_3() {
         max_elems_per_chunk = lo_discount->size;
     }
 
-    uint64_t* data_end = reinterpret_cast<uint64_t*>(static_cast<char*>(lo_discount->data) + lo_discount->sizeInBytes);
-
-    if (remote) {
-        // std::cout << "Waiting LD..." << std::flush;
-        wait_col_data_ready(lo_discount, static_cast<char*>(lo_discount->data));
-        // std::cout << chunk_counts( lo_discount ) << std::flush;
-        // std::cout << "LQ..." << std::flush;
-        wait_col_data_ready(lo_quantity, static_cast<char*>(lo_quantity->data));
-        // std::cout << chunk_counts( lo_quantity ) << std::flush;
-        // std::cout << "LE..." << std::flush;
-        wait_col_data_ready(lo_extendedprice, static_cast<char*>(lo_extendedprice->data));
-        // std::cout << chunk_counts( lo_extendedprice ) << std::flush;
-        // std::cout << "Done." << std::endl;
-    }
-
     uint64_t sum = 0;
-    size_t chunk = 0;
-    size_t base_offset = 0;
+    size_t baseOffset = 0;
+    size_t currentChunkSize = max_elems_per_chunk;
 
-    while (data_ld < data_end) {
-        // std::cout << "Iteration " << chunk << std::endl;
-        const size_t elem_diff = data_end - data_ld;
+    size_t columnSize = lo_discount->size;
+
+    while (baseOffset < lo_discount->size) {
+        const size_t elem_diff = columnSize - baseOffset;
         if (elem_diff < max_elems_per_chunk) {
-            base_offset += chunk * max_elems_per_chunk;
-            max_elems_per_chunk = elem_diff;
-        } else {
-            base_offset += chunk * max_elems_per_chunk;
+            currentChunkSize = elem_diff;
         }
 
-        auto le_idx = gt_le(data_le, lt_lq(data_lq, between_ld(data_ld, max_elems_per_chunk)));
+        auto le_idx = greater_than<remote, chunked, prefetching>(lo_extendedprice, 5, baseOffset, currentChunkSize,
+                                                                 less_than<remote, chunked, prefetching>(lo_quantity, 25, baseOffset, currentChunkSize,
+                                                                                                         between_incl<remote, chunked, prefetching, true>(lo_discount, 10, 30, baseOffset, currentChunkSize, {})));
+
         for (auto idx : le_idx) {
             // sum += base_offset + idx;  // fix idx for chunk vs full, hopefully
             ++sum;
         }
-        ++chunk;
-        data_ld = data_ld + max_elems_per_chunk;
-        data_lq = data_lq + max_elems_per_chunk;
-        data_le = data_le + max_elems_per_chunk;
-    }
 
-    // std::cout << chunk_counts(lo_discount);
-    // std::cout << chunk_counts(lo_quantity);
-    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
+        baseOffset += currentChunkSize;
+    }
 
     return sum;
 }
@@ -437,9 +547,12 @@ uint64_t bench_4() {
     return sum;
 }
 
-using bench_func = std::function<uint64_t()>;
+template <typename Fn>
+void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::string logName) {
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
 
-void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ident1, std::string ident2, std::string ident3, std::ofstream& out) {
     for (size_t i = 0; i < 10; ++i) {
         auto s_ts = std::chrono::high_resolution_clock::now();
         auto sum = f1();
@@ -447,9 +560,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         std::chrono::duration<double> secs = e_ts - s_ts;
 
-        out << ident1 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << "Local\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident1 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Local\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -459,9 +572,9 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         secs = e_ts - s_ts;
 
-        out << ident2 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << "Remote\tFull\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident2 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Remote\tFull\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
@@ -471,125 +584,48 @@ void doBenchmark(bench_func& f1, bench_func& f2, bench_func& f3, std::string ide
 
         secs = e_ts - s_ts;
 
-        out << ident3 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        out << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
             << std::flush;
-        std::cout << ident3 << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        std::cout << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f4();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f5();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+
+        out << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+            << std::flush;
+        std::cout << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
     }
-}
-
-void executeBenchmarkingQuery_1(std::string logName) {
-    logName = logName + "_q1.log";
-
-    std::ofstream out;
-    out.open(logName, std::ios_base::app);
-    out << std::fixed << std::setprecision(7) << std::endl;
-
-    bench_func call_local = []() -> uint64_t {
-        return bench_1_1<false, false>();
-    };
-    bench_func call_remote_full = []() -> uint64_t {
-        return bench_1_1<true, false>();
-    };
-    bench_func call_remote_chunk = []() -> uint64_t {
-        return bench_1_1<true, true>();
-    };
-
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
-
-    out.close();
-}
-
-void executeBenchmarkingQuery_2(std::string logName) {
-    logName = logName + "_q2.log";
-
-    std::ofstream out;
-    out.open(logName, std::ios_base::app);
-    out << std::fixed << std::setprecision(7) << std::endl;
-
-    bench_func call_local = []() -> uint64_t {
-        return bench_2<false, false>();
-    };
-    bench_func call_remote_full = []() -> uint64_t {
-        return bench_2<true, false>();
-    };
-    bench_func call_remote_chunk = []() -> uint64_t {
-        return bench_2<true, true>();
-    };
-
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
-
-    out.close();
-}
-
-void executeBenchmarkingQuery_3(std::string logName) {
-    logName = logName + "_q3.log";
-
-    std::ofstream out;
-    out.open(logName, std::ios_base::app);
-    out << std::fixed << std::setprecision(7) << std::endl;
-
-    bench_func call_local = []() -> uint64_t {
-        return bench_3<false, false>();
-    };
-    bench_func call_remote_full = []() -> uint64_t {
-        return bench_3<true, false>();
-    };
-    bench_func call_remote_chunk = []() -> uint64_t {
-        return bench_3<true, true>();
-    };
-
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
-
-    out.close();
-}
-
-void executeBenchmarkingQuery_4(std::string logName) {
-    logName = logName + "_q4.log";
-
-    std::ofstream out;
-    out.open(logName, std::ios_base::app);
-    out << std::fixed << std::setprecision(7) << std::endl;
-
-    bench_func call_local = []() -> uint64_t {
-        return bench_4<false, false>();
-    };
-    bench_func call_remote_full = []() -> uint64_t {
-        return bench_4<true, false>();
-    };
-    bench_func call_remote_chunk = []() -> uint64_t {
-        return bench_4<true, true>();
-    };
-
-    doBenchmark(call_local, call_remote_full, call_remote_chunk, "Local\tFull\t", "Remote\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_local, call_remote_chunk, call_remote_full, "Local\tFull\t", "Remote\tChunked\t", "Remote\tFull\t", out);
-    doBenchmark(call_remote_full, call_local, call_remote_chunk, "Remote\tFull\t", "Local\tFull\t", "Remote\tChunked\t", out);
-    doBenchmark(call_remote_full, call_remote_chunk, call_local, "Remote\tFull\t", "Remote\tChunked\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_remote_full, call_local, "Remote\tChunked\t", "Remote\tFull\t", "Local\tFull\t", out);
-    doBenchmark(call_remote_chunk, call_local, call_remote_full, "Remote\tChunked\t", "Local\tFull\t", "Remote\tFull\t", out);
 
     out.close();
 }
 
 void executeAllBenchmarkingQueries(std::string logName) {
-    // executeBenchmarkingQuery_1(logName);
-    // executeBenchmarkingQuery_2(logName);
-    // executeBenchmarkingQuery_3(logName);
-    executeBenchmarkingQuery_4(logName);
+    // doBenchmark(std::forward<decltype(bench_1_1<false, false>)>(bench_1_1<false, false>), std::forward<decltype(bench_1_1<true, false>)>(bench_1_1<true, false>), std::forward<decltype(bench_1_1<true, true>)>(bench_1_1<true, true>), std::string(logName + "_q1.log"));
+    // doBenchmark(std::forward<decltype(bench_2<false, false>)>(bench_2<false, false>), std::forward<decltype(bench_2<true, false>)>(bench_2<true, false>), std::forward<decltype(bench_2<true, true>)>(bench_2<true, true>), std::string(logName + "_q2.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false>)>(bench_3<false, false, false>),
+                std::forward<decltype(bench_3<true, false, false>)>(bench_3<true, false, false>),
+                std::forward<decltype(bench_3<true, false, true>)>(bench_3<true, false, true>),
+                std::forward<decltype(bench_3<true, true, false>)>(bench_3<true, true, false>),
+                std::forward<decltype(bench_3<true, true, true>)>(bench_3<true, true, true>),
+                std::string(logName + "_q3.log"));
+    // doBenchmark(std::forward<decltype(bench_4<false, false>)>(bench_4<false, false>), std::forward<decltype(bench_4<true, false>)>(bench_4<true, false>), std::forward<decltype(bench_4<true, true>)>(bench_4<true, true>), std::string(logName + "_q4.log"));
 }
