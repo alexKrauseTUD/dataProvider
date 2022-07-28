@@ -49,7 +49,7 @@ struct col_network_info {
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
 
-    bool is_complete() const {
+    bool check_complete() const {
         return received_bytes == sizeInBytes();
     }
 

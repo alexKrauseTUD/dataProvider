@@ -751,6 +751,10 @@ DataCatalog::DataCatalog() {
              * [ header_t | chunk_offset bytes_per_column col_cnt [ident_len]+, [ident] | [payload] ]
              */
             const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
+            // We just <know> that we use 64bit values
+            // TODO: Infer from column data_type member
+            const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(appMetaSize);
+
             char* appMetaData = (char*)malloc(appMetaSize);
             char* tmp = appMetaData;
 
@@ -761,12 +765,12 @@ DataCatalog::DataCatalog() {
             // How much data ist left to send
             const size_t remaining_size = info->cols[0]->sizeInBytes - info->curr_offset;
 
-            // How many bytes per column in this chunk - normalize to 8 Byte
-            const size_t max_bytes_per_column = ((dataCatalog_chunkMaxSize / idents.size()) / 8) * 8;
+            // We will always only send 1 message, see maximumPayloadSize. Normalize to 8 Byte members
+            using element_type = uint64_t;
+            const size_t max_bytes_per_column = ((maximumPayloadSize / idents.size()) / sizeof(element_type)) * sizeof(element_type);
             const size_t bytes_per_column = (remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size;
-            // std::cout << "BPC calc: (" << remaining_size << " > " << max_bytes_per_column << ") ? " << ((remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size) << std::endl;
-
             const size_t bytes_in_payload = idents.size() * bytes_per_column;
+
             memcpy(tmp, &bytes_per_column, sizeof(size_t));
             tmp += sizeof(size_t);
 
@@ -787,7 +791,7 @@ DataCatalog::DataCatalog() {
 
             ConnectionManager::getInstance().sendData(conId, payload, bytes_in_payload, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax));
             info->curr_offset += bytes_per_column;
-            // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
+            std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
 
             free(payload);
             free(appMetaData);
@@ -821,13 +825,14 @@ DataCatalog::DataCatalog() {
         // Prepare ident vector
         std::vector<std::string> idents;
         idents.reserve(ident_infos[0]);
-        // std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: ";
+
+        std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: ";
         for (size_t i = 0; i < ident_infos[0]; ++i) {
             idents.emplace_back(data, ident_infos[i + 1]);
             data += ident_infos[i + 1];
-            // std::cout << idents.back() << " ";
+            std::cout << idents.back() << " ";
         }
-        // std::cout << std::endl;
+        std::cout << std::endl;
 
         std::vector<col_t*> remote_cols;
         remote_cols.reserve(idents.size());
@@ -838,16 +843,6 @@ DataCatalog::DataCatalog() {
             remote_cols.push_back(remote_col_it);
         }
 
-        const size_t max_bytes_per_column = ((dataCatalog_chunkMaxSize / idents.size()) / 8) * 8;
-        const bool last_chunk_indicated = bytes_per_column < ((dataCatalog_chunkMaxSize / idents.size()) / 8) * 8;
-        size_t modulo_part;
-        if (last_chunk_indicated && head->payload_position_offset == 0) {
-            modulo_part = max_bytes_per_column;
-        } else {
-            modulo_part = bytes_per_column;
-        }
-
-        size_t current_payload_bytes_left = head->current_payload_size;
         for (auto col : remote_cols) {
             auto col_network_info_iterator = remote_col_info.find(col->ident);
             if (col_network_info_iterator == remote_col_info.end()) {
@@ -856,56 +851,19 @@ DataCatalog::DataCatalog() {
             }
 
             const size_t current_offset = col_network_info_iterator->second.received_bytes;
-
-            // First message of last chunk
-            bool chunk_boundary_reached;
-            if (last_chunk_indicated) {
-                chunk_boundary_reached = ((current_offset % max_bytes_per_column) == 0) || col_network_info_iterator->second.is_complete();
-            } else {
-                chunk_boundary_reached = ((current_offset % bytes_per_column) == 0);
-            }
-
-            // if a total part of bytes_per_column is received, the offset is divisible by it.
-            // std::cout << "[PseudoPax] Calculation for " << col->ident << " - ";
-            // std::cout << current_offset << " % " << bytes_per_column << "(" << (current_offset % modulo_part) << ") == 0 ? Fallback: " << (bytes_per_column - (current_offset % modulo_part)) << std::endl;
-
-            const size_t col_chunk_bytes_missing = (chunk_boundary_reached ? bytes_per_column : (bytes_per_column - (current_offset % modulo_part)));
-            if (chunk_boundary_reached && (col->requested_chunks == col->received_chunks)) {
-                // Current column already satisfied, go to next.
-                // std::cout << "[PseudoPax] Col full, continue to next." << std::endl;
-                continue;
-            }
-
-            const size_t current_col_bytes = current_payload_bytes_left > col_chunk_bytes_missing ? col_chunk_bytes_missing : current_payload_bytes_left;
-            // std::cout << "[PseudoPax] Adding " << current_col_bytes << " to column " << col->ident << " Bytes left in message: " << current_payload_bytes_left << std::endl;
-            col->append_chunk(current_offset, current_col_bytes, pax_ptr);
-            pax_ptr += current_col_bytes;
-
-            current_payload_bytes_left -= current_col_bytes;
+            col->append_chunk(current_offset, bytes_per_column, pax_ptr);
+            pax_ptr += bytes_per_column;
 
             std::lock_guard<std::mutex> lk(col->iteratorLock);
             // Update network info struct to check if we received all data
-            col_network_info_iterator->second.received_bytes += current_col_bytes;
-            if (col_network_info_iterator->second.received_bytes % bytes_per_column == 0) {
-                col->advance_end_pointer(bytes_per_column);
-                if (col_network_info_iterator->second.is_complete()) {
-                    col->is_complete = true;
-                    // std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
-                }
-                ++col->received_chunks;
-                // std::cout << "[PseudoPax] Latest chunk of '" << col->ident << "' received completely." << std::endl;
-            } else if (col_network_info_iterator->second.is_complete()) {
-                col->advance_end_pointer(head->total_data_size);
-                col->is_complete = true;
-                ++col->received_chunks;
-                // std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
-            }
+            col_network_info_iterator->second.received_bytes += bytes_per_column;
 
-            // All data processed, need to wait for next package.
-            if (current_payload_bytes_left == 0) {
-                // std::cout << "[PseudoPax] Message empty, waiting for next." << std::endl;
-                break;
+            col->advance_end_pointer(bytes_per_column);
+            if (col_network_info_iterator->second.check_complete()) {
+                col->is_complete = true;
+                std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
             }
+            ++col->received_chunks;
         }
     };
 
@@ -1159,7 +1117,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
     }
 
     if (!all_fetchable) {
-        std::cout << "Pending chunks of current pax request, ignoring." << std::endl;
+        std::cout << "Pending chunks of current pax request or complete, ignoring." << std::endl;
         for (auto lk : locks) {
             lk->unlock();
         }
