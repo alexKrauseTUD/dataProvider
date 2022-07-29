@@ -395,11 +395,12 @@ uint64_t bench_3() {
     return sum;
 }
 
-template <bool remote, bool paxed>
+template <bool remote, bool paxed, bool prefetching>
 uint64_t bench_4() {
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
+    std::vector<std::string> idents{"lo_discount", "lo_quantity", "lo_extendedprice"};
 
     if (remote) {
         DataCatalog::getInstance().fetchRemoteInfo();
@@ -411,7 +412,7 @@ uint64_t bench_4() {
         lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
         if (!paxed) lo_extendedprice->request_data(!paxed);
 
-        if (paxed) DataCatalog::getInstance().fetchPseudoPax(1, {"lo_discount", "lo_quantity", "lo_extendedprice"});
+        if (paxed) DataCatalog::getInstance().fetchPseudoPax(1, idents);
     } else {
         lo_discount = DataCatalog::getInstance().find_local("lo_discount");
         lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
@@ -491,14 +492,22 @@ uint64_t bench_4() {
 
     size_t max_elems_per_chunk = 0;
     if (paxed) {
-        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t) / 3;
+        size_t total_id_len = 0;
+        for (auto& id : idents) {
+            total_id_len += id.size();
+        }
+
+        const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
+        const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(1)->maxBytesInPayload(appMetaSize);
+
+        max_elems_per_chunk = maximumPayloadSize / sizeof(uint64_t) / idents.size();
     } else {
         max_elems_per_chunk = lo_discount->size;
     }
 
     uint64_t* data_end = reinterpret_cast<uint64_t*>(static_cast<char*>(lo_discount->data) + lo_discount->sizeInBytes);
 
-    if (remote && !paxed) {
+    if (remote) {
         // std::cout << "Waiting LD..." << std::flush;
         wait_col_data_ready(lo_discount, static_cast<char*>(lo_discount->data));
         // std::cout << chunk_counts( lo_discount ) << std::flush;
@@ -518,15 +527,12 @@ uint64_t bench_4() {
     while (data_ld < data_end) {
         // std::cout << "Iteration " << chunk << std::endl;
         if (remote && paxed) {
-            DataCatalog::getInstance().fetchPseudoPax(1, {"lo_discount", "lo_quantity", "lo_extendedprice"});
+            DataCatalog::getInstance().fetchPseudoPax(1, idents);
         }
 
         const size_t elem_diff = data_end - data_ld;
         if (elem_diff < max_elems_per_chunk) {
-            base_offset += chunk * max_elems_per_chunk;
             max_elems_per_chunk = elem_diff;
-        } else {
-            base_offset += chunk * max_elems_per_chunk;
         }
 
         auto le_idx = gt_le(data_le, lt_lq(data_lq, between_ld(data_ld, max_elems_per_chunk)));
@@ -578,17 +584,17 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::string logNam
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = f3();
-        e_ts = std::chrono::high_resolution_clock::now();
+        // s_ts = std::chrono::high_resolution_clock::now();
+        // sum = f3();
+        // e_ts = std::chrono::high_resolution_clock::now();
 
-        secs = e_ts - s_ts;
+        // secs = e_ts - s_ts;
 
-        out << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        // out << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        //     << std::flush;
+        // std::cout << "Remote\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
-        DataCatalog::getInstance().eraseAllRemoteColumns();
+        // DataCatalog::getInstance().eraseAllRemoteColumns();
 
         s_ts = std::chrono::high_resolution_clock::now();
         sum = f4();
@@ -602,17 +608,17 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::string logNam
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = f5();
-        e_ts = std::chrono::high_resolution_clock::now();
+        // s_ts = std::chrono::high_resolution_clock::now();
+        // sum = f5();
+        // e_ts = std::chrono::high_resolution_clock::now();
 
-        secs = e_ts - s_ts;
+        // secs = e_ts - s_ts;
 
-        out << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
-            << std::flush;
-        std::cout << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
+        // out << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl
+        //     << std::flush;
+        // std::cout << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +DataCatalog::getInstance().dataCatalog_chunkThreshold << "\t" << secs.count() << "\t" << sum << std::endl;
 
-        DataCatalog::getInstance().eraseAllRemoteColumns();
+        // DataCatalog::getInstance().eraseAllRemoteColumns();
     }
 
     out.close();
@@ -621,11 +627,17 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::string logNam
 void executeAllBenchmarkingQueries(std::string logName) {
     // doBenchmark(std::forward<decltype(bench_1_1<false, false>)>(bench_1_1<false, false>), std::forward<decltype(bench_1_1<true, false>)>(bench_1_1<true, false>), std::forward<decltype(bench_1_1<true, true>)>(bench_1_1<true, true>), std::string(logName + "_q1.log"));
     // doBenchmark(std::forward<decltype(bench_2<false, false>)>(bench_2<false, false>), std::forward<decltype(bench_2<true, false>)>(bench_2<true, false>), std::forward<decltype(bench_2<true, true>)>(bench_2<true, true>), std::string(logName + "_q2.log"));
-    doBenchmark(std::forward<decltype(bench_3<false, false, false>)>(bench_3<false, false, false>),
-                std::forward<decltype(bench_3<true, false, false>)>(bench_3<true, false, false>),
-                std::forward<decltype(bench_3<true, false, true>)>(bench_3<true, false, true>),
-                std::forward<decltype(bench_3<true, true, false>)>(bench_3<true, true, false>),
-                std::forward<decltype(bench_3<true, true, true>)>(bench_3<true, true, true>),
-                std::string(logName + "_q3.log"));
-    // doBenchmark(std::forward<decltype(bench_4<false, false>)>(bench_4<false, false>), std::forward<decltype(bench_4<true, false>)>(bench_4<true, false>), std::forward<decltype(bench_4<true, true>)>(bench_4<true, true>), std::string(logName + "_q4.log"));
+    // doBenchmark(std::forward<decltype(bench_3<false, false, false>)>(bench_3<false, false, false>),
+    //             std::forward<decltype(bench_3<true, false, false>)>(bench_3<true, false, false>),
+    //             std::forward<decltype(bench_3<true, false, true>)>(bench_3<true, false, true>),
+    //             std::forward<decltype(bench_3<true, true, false>)>(bench_3<true, true, false>),
+    //             std::forward<decltype(bench_3<true, true, true>)>(bench_3<true, true, true>),
+    //             std::string(logName + "_q3.log"));
+
+    doBenchmark(std::forward<decltype(bench_4<false, false, false>)>(bench_4<false, false, false>),
+                std::forward<decltype(bench_4<true, false, false>)>(bench_4<true, false, false>),
+                std::forward<decltype(bench_4<true, false, true>)>(bench_4<true, false, true>),
+                std::forward<decltype(bench_4<true, true, false>)>(bench_4<true, true, false>),
+                std::forward<decltype(bench_4<true, true, true>)>(bench_4<true, true, true>),
+                std::string(logName + "_q4.log"));
 }

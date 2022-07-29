@@ -791,7 +791,7 @@ DataCatalog::DataCatalog() {
 
             ConnectionManager::getInstance().sendData(conId, payload, bytes_in_payload, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax));
             info->curr_offset += bytes_per_column;
-            std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
+            // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
 
             free(payload);
             free(appMetaData);
@@ -826,13 +826,13 @@ DataCatalog::DataCatalog() {
         std::vector<std::string> idents;
         idents.reserve(ident_infos[0]);
 
-        std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: ";
+        // std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: ";
         for (size_t i = 0; i < ident_infos[0]; ++i) {
             idents.emplace_back(data, ident_infos[i + 1]);
             data += ident_infos[i + 1];
-            std::cout << idents.back() << " ";
+            // std::cout << idents.back() << " ";
         }
-        std::cout << std::endl;
+        // std::cout << std::endl;
 
         std::vector<col_t*> remote_cols;
         remote_cols.reserve(idents.size());
@@ -846,7 +846,7 @@ DataCatalog::DataCatalog() {
         for (auto col : remote_cols) {
             auto col_network_info_iterator = remote_col_info.find(col->ident);
             if (col_network_info_iterator == remote_col_info.end()) {
-                std::cout << "[PseudoPax] No Network info for received column " << col->ident << ", fetch column info first -- discarding message" << std::endl;
+                // std::cout << "[PseudoPax] No Network info for received column " << col->ident << ", fetch column info first -- discarding message" << std::endl;
                 return;
             }
 
@@ -861,7 +861,7 @@ DataCatalog::DataCatalog() {
             col->advance_end_pointer(bytes_per_column);
             if (col_network_info_iterator->second.check_complete()) {
                 col->is_complete = true;
-                std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
+                // std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
             }
             ++col->received_chunks;
         }
@@ -1103,6 +1103,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
     size_t string_sizes = 0;
 
     bool all_fetchable = true;
+    bool all_complete = true;
     std::vector<col_t*> ptrs;
     std::vector<std::mutex*> locks;
     for (auto& id : idents) {
@@ -1111,13 +1112,17 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
         ptrs.push_back(find_remote(id));
         ptrs.back()->iteratorLock.lock();
         locks.push_back(&ptrs.back()->iteratorLock);
-        const bool fetchable = !(ptrs.back()->is_complete || ptrs.back()->requested_chunks > ptrs.back()->received_chunks);
+        const bool fetchable = !(ptrs.back()->requested_chunks > ptrs.back()->received_chunks);
+        const bool complete = ptrs.back()->is_complete;
         // std::cout << ptrs.back()->ident << " " << ptrs.back()->requested_chunks << " " << ptrs.back()->received_chunks << " " << ptrs.back()->is_complete << std::endl;
         all_fetchable &= fetchable;
+        all_complete &= complete;
     }
 
-    if (!all_fetchable) {
-        std::cout << "Pending chunks of current pax request or complete, ignoring." << std::endl;
+    if (all_complete || !all_fetchable) {
+        if (!all_complete) {
+            std::cout << "Pending chunks of current pax request or complete, ignoring." << std::endl;
+        }
         for (auto lk : locks) {
             lk->unlock();
         }
