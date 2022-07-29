@@ -938,7 +938,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
     std::default_random_engine generator;
     switch (type) {
         case col_data_t::gen_smallint: {
-            std::uniform_int_distribution<uint8_t> distribution(0, 100);
+            std::uniform_int_distribution<uint8_t> distribution(0, 99);
             tmp->datatype = col_data_t::gen_smallint;
             tmp->allocate_aligned_internal<uint8_t>(elemCount);
             auto data = reinterpret_cast<uint8_t*>(tmp->data);
@@ -949,7 +949,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             break;
         }
         case col_data_t::gen_bigint: {
-            std::uniform_int_distribution<uint64_t> distribution(0, 100);
+            std::uniform_int_distribution<uint64_t> distribution(0, 99);
             tmp->datatype = col_data_t::gen_bigint;
             tmp->allocate_aligned_internal<uint64_t>(elemCount);
             auto data = reinterpret_cast<uint64_t*>(tmp->data);

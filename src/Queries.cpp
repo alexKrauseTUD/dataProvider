@@ -340,7 +340,7 @@ uint64_t bench_2() {
     return sum;
 }
 
-template <bool remote, bool chunked, bool paxed, bool prefetching>
+template <bool remote, bool chunked, bool paxed, bool prefetching, size_t qid>
 uint64_t bench_3() {
     col_t* lo_discount;
     col_t* lo_quantity;
@@ -387,10 +387,13 @@ uint64_t bench_3() {
 
     size_t columnSize = lo_discount->size;
 
+    auto data_le = reinterpret_cast<uint64_t*>(lo_extendedprice->data);
+    auto data_ld = reinterpret_cast<uint64_t*>(lo_discount->data);
+
     while (baseOffset < lo_discount->size) {
         if (remote && paxed) {
             if (!prefetching) DataCatalog::getInstance().fetchPseudoPax(1, idents);
-            wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(reinterpret_cast<uint64_t*>(lo_extendedprice->data) + baseOffset));
+            wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data_le));
             if (prefetching) DataCatalog::getInstance().fetchPseudoPax(1, idents);
         }
 
@@ -399,15 +402,33 @@ uint64_t bench_3() {
             currentChunkElements = elem_diff;
         }
 
-        auto le_idx = greater_than<remote, chunked, paxed, prefetching>(lo_extendedprice, 5, baseOffset, currentChunkElements,
-                                                                        less_than<remote, chunked, paxed, prefetching>(lo_quantity, 25, baseOffset, currentChunkElements,
-                                                                                                                       between_incl<remote, chunked, paxed, prefetching, true>(lo_discount, 10, 30, baseOffset, currentChunkElements, {})));
+        std::vector<size_t> le_idx;
+
+        if (qid == 1) {
+            le_idx = greater_than<remote, chunked, paxed, prefetching>(lo_extendedprice, 5, baseOffset, currentChunkElements,
+                                                                       less_than<remote, chunked, paxed, prefetching>(lo_quantity, 25, baseOffset, currentChunkElements,
+                                                                                                                      between_incl<remote, chunked, paxed, prefetching, true>(lo_discount, 10, 30, baseOffset, currentChunkElements, {})));
+
+        } else if (qid == 2) {
+            le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, 100, baseOffset, currentChunkElements, {});
+        } else if (qid == 3) {
+            le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, 75, baseOffset, currentChunkElements, {});
+        } else if (qid == 4) {
+            le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, 50, baseOffset, currentChunkElements, {});
+        } else if (qid == 5) {
+            le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, 25, baseOffset, currentChunkElements, {});
+        } else if (qid == 6) {
+            le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, 1, baseOffset, currentChunkElements, {});
+        }
 
         for (auto idx : le_idx) {
+            // sum += (data_ld[idx] * data_le[idx]);
             ++sum;
         }
 
         baseOffset += currentChunkElements;
+        data_ld += currentChunkElements;
+        data_le += currentChunkElements;
     }
 
     return sum;
@@ -419,7 +440,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, Fn&& f7, 
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
 
-    for (size_t i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < 1; ++i) {
         auto s_ts = std::chrono::high_resolution_clock::now();
         auto sum = f1();
         auto e_ts = std::chrono::high_resolution_clock::now();
@@ -515,19 +536,53 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, Fn&& f7, 
 void executeAllBenchmarkingQueries(std::string logName) {
     // doBenchmark(std::forward<decltype(bench_1_1<false, false>)>(bench_1_1<false, false>), std::forward<decltype(bench_1_1<true, false>)>(bench_1_1<true, false>), std::forward<decltype(bench_1_1<true, true>)>(bench_1_1<true, true>), std::string(logName + "_q1.log"));
     // doBenchmark(std::forward<decltype(bench_2<false, false>)>(bench_2<false, false>), std::forward<decltype(bench_2<true, false>)>(bench_2<true, false>), std::forward<decltype(bench_2<true, true>)>(bench_2<true, true>), std::string(logName + "_q2.log"));
-    doBenchmark(std::forward<decltype(bench_3<false, false, false, false>)>(bench_3<false, false, false, false>),
-                std::forward<decltype(bench_3<true, false, false, false>)>(bench_3<true, false, false, false>),
-                std::forward<decltype(bench_3<true, false, false, true>)>(bench_3<true, false, false, true>),
-                std::forward<decltype(bench_3<true, true, false, false>)>(bench_3<true, true, false, false>),
-                std::forward<decltype(bench_3<true, true, false, true>)>(bench_3<true, true, false, true>),
-                std::forward<decltype(bench_3<true, false, true, false>)>(bench_3<true, false, true, false>),
-                std::forward<decltype(bench_3<true, false, true, true>)>(bench_3<true, false, true, true>),
-                std::string(logName + "_q3.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 1>)>(bench_3<false, false, false, false, 1>),
+                std::forward<decltype(bench_3<true, false, false, false, 1>)>(bench_3<true, false, false, false, 1>),
+                std::forward<decltype(bench_3<true, false, false, true, 1>)>(bench_3<true, false, false, true, 1>),
+                std::forward<decltype(bench_3<true, true, false, false, 1>)>(bench_3<true, true, false, false, 1>),
+                std::forward<decltype(bench_3<true, true, false, true, 1>)>(bench_3<true, true, false, true, 1>),
+                std::forward<decltype(bench_3<true, false, true, false, 1>)>(bench_3<true, false, true, false, 1>),
+                std::forward<decltype(bench_3<true, false, true, true, 1>)>(bench_3<true, false, true, true, 1>),
+                std::string(logName + "_q3_1.log"));
 
-    // doBenchmark(std::forward<decltype(bench_4<false, false, false>)>(bench_4<false, false, false>),
-    //             std::forward<decltype(bench_4<true, false, false>)>(bench_4<true, false, false>),
-    //             std::forward<decltype(bench_4<true, false, true>)>(bench_4<true, false, true>),
-    //             std::forward<decltype(bench_4<true, true, false>)>(bench_4<true, true, false>),
-    //             std::forward<decltype(bench_4<true, true, true>)>(bench_4<true, true, true>),
-    //             std::string(logName + "_q4.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 2>)>(bench_3<false, false, false, false, 2>),
+                std::forward<decltype(bench_3<true, false, false, false, 2>)>(bench_3<true, false, false, false, 2>),
+                std::forward<decltype(bench_3<true, false, false, true, 2>)>(bench_3<true, false, false, true, 2>),
+                std::forward<decltype(bench_3<true, true, false, false, 2>)>(bench_3<true, true, false, false, 2>),
+                std::forward<decltype(bench_3<true, true, false, true, 2>)>(bench_3<true, true, false, true, 2>),
+                std::forward<decltype(bench_3<true, false, true, false, 2>)>(bench_3<true, false, true, false, 2>),
+                std::forward<decltype(bench_3<true, false, true, true, 2>)>(bench_3<true, false, true, true, 2>),
+                std::string(logName + "_q3_2.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 3>)>(bench_3<false, false, false, false, 3>),
+                std::forward<decltype(bench_3<true, false, false, false, 3>)>(bench_3<true, false, false, false, 3>),
+                std::forward<decltype(bench_3<true, false, false, true, 3>)>(bench_3<true, false, false, true, 3>),
+                std::forward<decltype(bench_3<true, true, false, false, 3>)>(bench_3<true, true, false, false, 3>),
+                std::forward<decltype(bench_3<true, true, false, true, 3>)>(bench_3<true, true, false, true, 3>),
+                std::forward<decltype(bench_3<true, false, true, false, 3>)>(bench_3<true, false, true, false, 3>),
+                std::forward<decltype(bench_3<true, false, true, true, 3>)>(bench_3<true, false, true, true, 3>),
+                std::string(logName + "_q3_3.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 4>)>(bench_3<false, false, false, false, 4>),
+                std::forward<decltype(bench_3<true, false, false, false, 4>)>(bench_3<true, false, false, false, 4>),
+                std::forward<decltype(bench_3<true, false, false, true, 4>)>(bench_3<true, false, false, true, 4>),
+                std::forward<decltype(bench_3<true, true, false, false, 4>)>(bench_3<true, true, false, false, 4>),
+                std::forward<decltype(bench_3<true, true, false, true, 4>)>(bench_3<true, true, false, true, 4>),
+                std::forward<decltype(bench_3<true, false, true, false, 4>)>(bench_3<true, false, true, false, 4>),
+                std::forward<decltype(bench_3<true, false, true, true, 4>)>(bench_3<true, false, true, true, 4>),
+                std::string(logName + "_q3_4.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 5>)>(bench_3<false, false, false, false, 5>),
+                std::forward<decltype(bench_3<true, false, false, false, 5>)>(bench_3<true, false, false, false, 5>),
+                std::forward<decltype(bench_3<true, false, false, true, 5>)>(bench_3<true, false, false, true, 5>),
+                std::forward<decltype(bench_3<true, true, false, false, 5>)>(bench_3<true, true, false, false, 5>),
+                std::forward<decltype(bench_3<true, true, false, true, 5>)>(bench_3<true, true, false, true, 5>),
+                std::forward<decltype(bench_3<true, false, true, false, 5>)>(bench_3<true, false, true, false, 5>),
+                std::forward<decltype(bench_3<true, false, true, true, 5>)>(bench_3<true, false, true, true, 5>),
+                std::string(logName + "_q3_5.log"));
+    doBenchmark(std::forward<decltype(bench_3<false, false, false, false, 6>)>(bench_3<false, false, false, false, 6>),
+                std::forward<decltype(bench_3<true, false, false, false, 6>)>(bench_3<true, false, false, false, 6>),
+                std::forward<decltype(bench_3<true, false, false, true, 6>)>(bench_3<true, false, false, true, 6>),
+                std::forward<decltype(bench_3<true, true, false, false, 6>)>(bench_3<true, true, false, false, 6>),
+                std::forward<decltype(bench_3<true, true, false, true, 6>)>(bench_3<true, true, false, true, 6>),
+                std::forward<decltype(bench_3<true, false, true, false, 6>)>(bench_3<true, false, true, false, 6>),
+                std::forward<decltype(bench_3<true, false, true, true, 6>)>(bench_3<true, false, true, true, 6>),
+                std::string(logName + "_q3_6.log"));
 }

@@ -86,7 +86,7 @@ struct col_t {
     std::condition_variable iterator_data_available;
 
     ~col_t() {
-        delete reinterpret_cast<char*>(data);
+        free(data);
     }
 
     template <typename T>

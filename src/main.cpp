@@ -16,7 +16,7 @@ int main() {
     // auto worker_it = DataCatalog::getInstance().generate("worker", col_data_t::gen_smallint, 20);
     // auto salary_it = DataCatalog::getInstance().generate("salary", col_data_t::gen_float, 5);
 
-    size_t lineorderSize = 20000000;
+    size_t lineorderSize = 2000000;
 
     auto lo_orderdate = DataCatalog::getInstance().generate("lo_orderdate", col_data_t::gen_bigint, lineorderSize);
     auto lo_discount = DataCatalog::getInstance().generate("lo_discount", col_data_t::gen_bigint, lineorderSize);
