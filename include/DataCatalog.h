@@ -177,6 +177,8 @@ class DataCatalog {
 
     void eraseAllRemoteColumns();
 
+    void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);
+
     // Communication stubs
     void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
     void fetchPseudoPax(std::size_t conId, std::vector<std::string> idents) const;

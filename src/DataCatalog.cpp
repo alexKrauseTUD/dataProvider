@@ -252,22 +252,10 @@ DataCatalog::DataCatalog() {
                 using namespace std::chrono_literals;
                 std::this_thread::sleep_for(1s);
 
-                for (uint64_t chunkSize = 1ull << 15; chunkSize < 1ull << 24; chunkSize <<= 1) {
-                    dataCatalog_chunkMaxSize = chunkSize;
-                    dataCatalog_chunkThreshold = chunkSize;
+                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+                std::cout << std::endl;
 
-                    char* ptr = reinterpret_cast<char*>(&chunkSize);
-
-                    std::unique_lock<std::mutex> lk(reconfigure_lock);
-                    reconfigured = false;
-                    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
-                    reconfigure_done.wait(lk, [this] { return reconfigured; });
-
-                    std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
-                    std::cout << std::endl;
-
-                    executeAllBenchmarkingQueries(logName);
-                }
+                executeAllBenchmarkingQueries(logName);
             }
 
             std::cout << std::endl;
@@ -1179,3 +1167,22 @@ void DataCatalog::fetchRemoteInfo() {
     // }
     remote_info_available.wait(lk, [this] { return col_info_received; });
 };
+
+void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold) {
+    using namespace std::chrono_literals;
+
+    if (newChunkSize == 0 || newChunkThreshold == 0) {
+        std::cout << "Either the new Chunk Size or the new Chunk Threshold was 0!" << std::endl;
+        return;
+    }
+
+    dataCatalog_chunkMaxSize = newChunkSize;
+    dataCatalog_chunkThreshold = newChunkThreshold;
+
+    char* ptr = reinterpret_cast<char*>(&dataCatalog_chunkMaxSize);
+
+    std::unique_lock<std::mutex> lk(reconfigure_lock);
+    reconfigured = false;
+    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
+    reconfigure_done.wait_for(lk, 500ms, [this] { return reconfigured; });
+}
