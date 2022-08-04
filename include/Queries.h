@@ -12,6 +12,6 @@
 #include <vector>
 #include <functional>
 
-void executeAllBenchmarkingQueries(std::string logName);
+void executeAllBenchmarkingQueries(std::string& logName);
 
 #endif

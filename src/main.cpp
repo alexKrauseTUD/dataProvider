@@ -16,17 +16,17 @@ int main() {
     // auto worker_it = DataCatalog::getInstance().generate("worker", col_data_t::gen_smallint, 20);
     // auto salary_it = DataCatalog::getInstance().generate("salary", col_data_t::gen_float, 5);
 
-    size_t lineorderSize = 2000000;
+    size_t lineorderSize = 200000000;
 
     auto lo_orderdate = DataCatalog::getInstance().generate("lo_orderdate", col_data_t::gen_bigint, lineorderSize);
     auto lo_discount = DataCatalog::getInstance().generate("lo_discount", col_data_t::gen_bigint, lineorderSize);
     auto lo_quantity = DataCatalog::getInstance().generate("lo_quantity", col_data_t::gen_bigint, lineorderSize);
     auto lo_extendedprice = DataCatalog::getInstance().generate("lo_extendedprice", col_data_t::gen_bigint, lineorderSize);
 
-    size_t dateSize = 5000;
+    // size_t dateSize = 5000;
 
-    auto d_datekey = DataCatalog::getInstance().generate("d_datekey", col_data_t::gen_bigint, dateSize);
-    auto d_year = DataCatalog::getInstance().generate("d_year", col_data_t::gen_bigint, dateSize);
+    // auto d_datekey = DataCatalog::getInstance().generate("d_datekey", col_data_t::gen_bigint, dateSize);
+    // auto d_year = DataCatalog::getInstance().generate("d_year", col_data_t::gen_bigint, dateSize);
 
     DataCatalog::getInstance().print_all();
 

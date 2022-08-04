@@ -4,18 +4,13 @@
 
 inline void wait_col_data_ready(col_t* _col, char* _data) {
     std::unique_lock<std::mutex> lk(_col->iteratorLock);
-
-    while (!(_data < static_cast<char*>(_col->current_end))) {
-        using namespace std::chrono_literals;
-        if (!_col->iterator_data_available.wait_for(lk, 500ms, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); })) {
-            std::cout << "retrying...(" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::flush;
-        }
+    if (!(_data < static_cast<char*>(_col->current_end))) {
+        _col->iterator_data_available.wait(lk, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); });
     }
-    // std::cout << "Done. (" << reinterpret_cast<uint64_t*>(_data) << "/" << static_cast<uint64_t*>(_col->current_end) << " -- " << _col->requested_chunks << "/" << _col->received_chunks << ") " << std::endl;
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -42,7 +37,7 @@ inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, co
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> less_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> less_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -69,7 +64,7 @@ inline std::vector<size_t> less_equal(col_t* column, const uint64_t predicate, c
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -96,7 +91,7 @@ inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate,
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> greater_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> greater_equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -123,7 +118,7 @@ inline std::vector<size_t> greater_equal(col_t* column, const uint64_t predicate
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> equal(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -150,7 +145,7 @@ inline std::vector<size_t> equal(col_t* column, const uint64_t predicate, const 
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -177,7 +172,7 @@ inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, std::vector<size_t> in_pos) {
+inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_1, const uint64_t predicate_2, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
@@ -202,132 +197,9 @@ inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_
 
     return out_vec;
 };
-
-template <bool remote, bool chunked>
-uint64_t bench_1_1() {
-    col_t* lo_orderdate;
-    col_t* lo_discount;
-    col_t* lo_quantity;
-    col_t* lo_extendedprice;
-
-    col_t* d_datekey;
-    col_t* d_year;
-
-    if (remote) {
-        DataCatalog::getInstance().fetchRemoteInfo();
-
-        d_year = DataCatalog::getInstance().find_remote("d_year");
-        d_year->request_data(!chunked);
-
-        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
-        lo_discount->request_data(!chunked);
-        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
-        lo_quantity->request_data(!chunked);
-        lo_orderdate = DataCatalog::getInstance().find_remote("lo_orderdate");
-        lo_orderdate->request_data(!chunked);
-        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
-        lo_extendedprice->request_data(!chunked);
-
-        d_datekey = DataCatalog::getInstance().find_remote("d_datekey");
-        d_datekey->request_data(!chunked);
-    } else {
-        lo_orderdate = DataCatalog::getInstance().find_local("lo_orderdate");
-        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
-        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
-        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
-
-        d_datekey = DataCatalog::getInstance().find_local("d_datekey");
-        d_year = DataCatalog::getInstance().find_local("d_year");
-    }
-
-    std::vector<col_t::col_iterator_t<uint64_t, chunked>> relevant_d;
-    relevant_d.reserve(d_year->size);
-
-    auto it_dd = d_datekey->begin<uint64_t, chunked>();
-    for (auto it_dy = d_year->begin<uint64_t, chunked>(); it_dy != d_year->end<uint64_t, chunked>(); ++it_dy, ++it_dd) {
-        if (*it_dy == 93) {
-            relevant_d.push_back(it_dd);
-        }
-    }
-
-    uint64_t sum = 0;
-
-    size_t idx_l = 0;
-    auto it_lq = lo_quantity->begin<uint64_t, chunked>();
-    auto it_lo = lo_orderdate->begin<uint64_t, chunked>();
-    auto it_le = lo_extendedprice->begin<uint64_t, chunked>();
-    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != lo_discount->end<uint64_t, chunked>(); ++it_ld, ++it_lq, ++it_lo, ++it_le) {
-        if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
-            for (auto it_dd : relevant_d) {
-                if (*it_lo == *it_dd) {
-                    sum += ((*it_le) * (*it_ld));
-                }
-            }
-        }
-    }
-
-    // auto chunk_counts = [](col_t* col) {
-    //     std::stringstream ss;
-    //     ss << col->requested_chunks << "/" << col->received_chunks << " ";
-    //     return ss.str();
-    // };
-
-    // std::cout << chunk_counts(lo_orderdate);
-    // std::cout << chunk_counts(lo_discount);
-    // std::cout << chunk_counts(lo_quantity);
-    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
-
-    return sum;
-}
-
-template <bool remote, bool chunked>
-uint64_t bench_2() {
-    col_t* lo_discount;
-    col_t* lo_quantity;
-    col_t* lo_extendedprice;
-
-    if (remote) {
-        DataCatalog::getInstance().fetchRemoteInfo();
-
-        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
-        lo_discount->request_data(!chunked);
-        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
-        lo_quantity->request_data(!chunked);
-        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
-        lo_extendedprice->request_data(!chunked);
-    } else {
-        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
-        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
-        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
-    }
-
-    uint64_t sum = 0;
-
-    size_t idx_l = 0;
-    auto it_lq = lo_quantity->begin<uint64_t, chunked>();
-    auto it_le = lo_extendedprice->begin<uint64_t, chunked>();
-    auto end_it = lo_discount->end<uint64_t, chunked>();
-    for (auto it_ld = lo_discount->begin<uint64_t, chunked>(); it_ld != end_it; ++it_ld, ++it_lq, ++it_le) {
-        if (10 <= *it_ld && *it_ld <= 30 && *it_lq < 25) {
-            sum += ((*it_le) * (*it_ld));
-        }
-    }
-
-    // auto chunk_counts = [](col_t* col) {
-    //     std::stringstream ss;
-    //     ss << col->requested_chunks << "/" << col->received_chunks << " ";
-    //     return ss.str();
-    // };
-
-    // std::cout << chunk_counts(lo_discount);
-    // std::cout << chunk_counts(lo_quantity);
-    // std::cout << chunk_counts(lo_extendedprice) << std::endl;
-
-    return sum;
-}
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
-uint64_t bench_3(uint64_t predicate) {
+uint64_t bench_1(uint64_t predicate) {
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
@@ -406,7 +278,7 @@ uint64_t bench_3(uint64_t predicate) {
 }
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
-uint64_t bench_4(const uint64_t predicate) {
+uint64_t bench_2(const uint64_t predicate) {
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
@@ -455,7 +327,7 @@ uint64_t bench_4(const uint64_t predicate) {
     auto data_le = reinterpret_cast<uint64_t*>(lo_extendedprice->data);
     auto data_ld = reinterpret_cast<uint64_t*>(lo_discount->data);
 
-    while (baseOffset < lo_discount->size) {
+    while (baseOffset < columnSize) {
         if (remote && paxed) {
             if (!prefetching) DataCatalog::getInstance().fetchPseudoPax(1, idents);
             wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data_le));
@@ -470,6 +342,19 @@ uint64_t bench_4(const uint64_t predicate) {
         auto le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, predicate, baseOffset, currentChunkElements, {});
 
         for (auto idx : le_idx) {
+            if (remote && !paxed) {
+                if (!prefetching) {
+                    lo_extendedprice->request_data(!chunked);
+                    lo_discount->request_data(!chunked);
+                }
+                wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data_le));
+                wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data_ld));
+                if (prefetching) {
+                    lo_extendedprice->request_data(!chunked);
+                    lo_discount->request_data(!chunked);
+                }
+            }
+
             sum += (data_ld[idx] * data_le[idx]);
             // ++sum;
         }
@@ -521,7 +406,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, Fn&& f7, 
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        for (uint64_t chunkSize = 1ull << 15; chunkSize < 1ull << 24; chunkSize <<= 1) {
+        for (uint64_t chunkSize = 1ull << 15; chunkSize <= 1ull << 25; chunkSize <<= 1) {
             DataCatalog::getInstance().reconfigureChunkSize(chunkSize, chunkSize);
 
             s_ts = std::chrono::high_resolution_clock::now();
@@ -577,58 +462,57 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, Fn&& f7, 
 
 void executeAllBenchmarkingQueries(std::string& logName) {
     std::ofstream out;
-    out.open(std::string(logName + "_q3.log"), std::ios_base::app);
+    out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    // doBenchmark(std::forward<decltype(bench_1_1<false, false>)>(bench_1_1<false, false>), std::forward<decltype(bench_1_1<true, false>)>(bench_1_1<true, false>), std::forward<decltype(bench_1_1<true, true>)>(bench_1_1<true, true>), std::string(logName + "_q1.log"));
-    // doBenchmark(std::forward<decltype(bench_2<false, false>)>(bench_2<false, false>), std::forward<decltype(bench_2<true, false>)>(bench_2<true, false>), std::forward<decltype(bench_2<true, true>)>(bench_2<true, true>), std::string(logName + "_q2.log"));
-    doBenchmark(bench_3<false, false, false, false>,
-                bench_3<true, false, false, false>,
-                bench_3<true, false, false, true>,
-                bench_3<true, true, false, false>,
-                bench_3<true, true, false, true>,
-                bench_3<true, false, true, false>,
-                bench_3<true, false, true, true>,
+
+    doBenchmark(bench_1<false, false, false, false>,
+                bench_1<true, false, false, false>,
+                bench_1<true, false, false, true>,
+                bench_1<true, true, false, false>,
+                bench_1<true, true, false, true>,
+                bench_1<true, false, true, false>,
+                bench_1<true, false, true, true>,
                 out, 0);
 
-    doBenchmark(bench_4<false, false, false, false>,
-                bench_4<true, false, false, false>,
-                bench_4<true, false, false, true>,
-                bench_4<true, true, false, false>,
-                bench_4<true, true, false, true>,
-                bench_4<true, false, true, false>,
-                bench_4<true, false, true, true>,
+    doBenchmark(bench_2<false, false, false, false>,
+                bench_2<true, false, false, false>,
+                bench_2<true, false, false, true>,
+                bench_2<true, true, false, false>,
+                bench_2<true, true, false, true>,
+                bench_2<true, false, true, false>,
+                bench_2<true, false, true, true>,
                 out, 100);
-    doBenchmark(bench_4<false, false, false, false>,
-                bench_4<true, false, false, false>,
-                bench_4<true, false, false, true>,
-                bench_4<true, true, false, false>,
-                bench_4<true, true, false, true>,
-                bench_4<true, false, true, false>,
-                bench_4<true, false, true, true>,
+    doBenchmark(bench_2<false, false, false, false>,
+                bench_2<true, false, false, false>,
+                bench_2<true, false, false, true>,
+                bench_2<true, true, false, false>,
+                bench_2<true, true, false, true>,
+                bench_2<true, false, true, false>,
+                bench_2<true, false, true, true>,
                 out, 75);
-    doBenchmark(bench_4<false, false, false, false>,
-                bench_4<true, false, false, false>,
-                bench_4<true, false, false, true>,
-                bench_4<true, true, false, false>,
-                bench_4<true, true, false, true>,
-                bench_4<true, false, true, false>,
-                bench_4<true, false, true, true>,
+    doBenchmark(bench_2<false, false, false, false>,
+                bench_2<true, false, false, false>,
+                bench_2<true, false, false, true>,
+                bench_2<true, true, false, false>,
+                bench_2<true, true, false, true>,
+                bench_2<true, false, true, false>,
+                bench_2<true, false, true, true>,
                 out, 50);
-    doBenchmark(bench_4<false, false, false, false>,
-                bench_4<true, false, false, false>,
-                bench_4<true, false, false, true>,
-                bench_4<true, true, false, false>,
-                bench_4<true, true, false, true>,
-                bench_4<true, false, true, false>,
-                bench_4<true, false, true, true>,
+    doBenchmark(bench_2<false, false, false, false>,
+                bench_2<true, false, false, false>,
+                bench_2<true, false, false, true>,
+                bench_2<true, true, false, false>,
+                bench_2<true, true, false, true>,
+                bench_2<true, false, true, false>,
+                bench_2<true, false, true, true>,
                 out, 25);
-    doBenchmark(bench_4<false, false, false, false>,
-                bench_4<true, false, false, false>,
-                bench_4<true, false, false, true>,
-                bench_4<true, true, false, false>,
-                bench_4<true, true, false, true>,
-                bench_4<true, false, true, false>,
-                bench_4<true, false, true, true>,
+    doBenchmark(bench_2<false, false, false, false>,
+                bench_2<true, false, false, false>,
+                bench_2<true, false, false, true>,
+                bench_2<true, true, false, false>,
+                bench_2<true, true, false, true>,
+                bench_2<true, false, true, false>,
+                bench_2<true, false, true, true>,
                 out, 1);
 
     out.close();

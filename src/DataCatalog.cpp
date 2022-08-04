@@ -230,11 +230,11 @@ DataCatalog::DataCatalog() {
     auto benchQueries = [this]() -> void {
         using namespace std::chrono_literals;
 
-        for (uint8_t num_rb = 2; num_rb <= 4; ++num_rb) {
-            for (uint64_t bytes = 1ull << 16; bytes < 1ull << 25; bytes <<= 1) {
+        for (uint8_t num_rb = 2; num_rb <= 3; ++num_rb) {
+            for (uint64_t bytes = 1ull << 17; bytes <= 1ull << 21; bytes <<= 1) {
                 auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 std::stringstream logNameStream;
-                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QueryBench_" << +num_rb << "_" << +bytes;
+                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << ".log";
                 std::string logName = logNameStream.str();
 
                 std::cout << "[Task] Set name: " << logName << std::endl;
@@ -1184,5 +1184,5 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
     std::unique_lock<std::mutex> lk(reconfigure_lock);
     reconfigured = false;
     ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
-    reconfigure_done.wait_for(lk, 500ms, [this] { return reconfigured; });
+    reconfigure_done.wait(lk, [this] { return reconfigured; });
 }
