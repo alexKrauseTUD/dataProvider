@@ -144,7 +144,7 @@ struct col_t {
     }
 
     void request_data(bool fetch_complete_column) {
-        std::lock_guard<std::mutex> _lk(iteratorLock);
+        std::unique_lock<std::mutex> _lk(iteratorLock);
         if (is_complete || requested_chunks > received_chunks) {
             // std::cout << "<data request ignored: " << (is_complete ? "is_complete" : "not_complete") << ">" << std::endl;
             // Do Nothing, ignore.

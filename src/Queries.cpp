@@ -2,23 +2,47 @@
 #include <DataCatalog.h>
 #include <Queries.h>
 
+#include <future>
+
+size_t OPTIMAL_BLOCK_SIZE = 524288;
+
+std::chrono::duration<double> waitingTime = std::chrono::duration<double>::zero();
+std::chrono::duration<double> workingTime = std::chrono::duration<double>::zero();
+std::chrono::duration<double> infoTime = std::chrono::duration<double>::zero();
+
+void reset_timer() {
+    waitingTime = std::chrono::duration<double>::zero();
+    workingTime = std::chrono::duration<double>::zero();
+    infoTime = std::chrono::duration<double>::zero();
+}
+
 inline void wait_col_data_ready(col_t* _col, char* _data) {
+    auto s_ts = std::chrono::high_resolution_clock::now();
     std::unique_lock<std::mutex> lk(_col->iteratorLock);
     if (!(_data < static_cast<char*>(_col->current_end))) {
         _col->iterator_data_available.wait(lk, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); });
     }
+    waitingTime += (std::chrono::high_resolution_clock::now() - s_ts);
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching, bool isFirst = false>
-inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos) {
+inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, const uint64_t offset, const size_t blockSize, const std::vector<size_t> in_pos, const bool reload) {
     auto data = reinterpret_cast<uint64_t*>(column->data) + offset;
     if (remote) {
-        if (!prefetching && !paxed) column->request_data(!chunked);
-        wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (reload) {
+            if (!prefetching && !paxed) {
+                column->request_data(!chunked);
+            }
+            wait_col_data_ready(column, reinterpret_cast<char*>(data));
+            if (prefetching && chunked && !paxed) {
+                column->request_data(!chunked);
+            }
+        }
     }
 
+    auto s_ts = std::chrono::high_resolution_clock::now();
     std::vector<size_t> out_vec;
+    out_vec.reserve(blockSize);
     if (isFirst) {
         for (auto e = 0; e < blockSize; ++e) {
             if (data[e] < predicate) {
@@ -33,6 +57,8 @@ inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, co
         }
     }
 
+    workingTime += (std::chrono::high_resolution_clock::now() - s_ts);
+
     return out_vec;
 };
 
@@ -42,7 +68,7 @@ inline std::vector<size_t> less_equal(col_t* column, const uint64_t predicate, c
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -69,7 +95,7 @@ inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate,
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -96,7 +122,7 @@ inline std::vector<size_t> greater_equal(col_t* column, const uint64_t predicate
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -123,7 +149,7 @@ inline std::vector<size_t> equal(col_t* column, const uint64_t predicate, const 
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -150,7 +176,7 @@ inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -177,7 +203,7 @@ inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_
     if (remote) {
         if (!prefetching && !paxed) column->request_data(!chunked);
         wait_col_data_ready(column, reinterpret_cast<char*>(data));
-        if (prefetching && !paxed) column->request_data(!chunked);
+        if (prefetching && chunked && !paxed) column->request_data(!chunked);
     }
 
     std::vector<size_t> out_vec;
@@ -284,8 +310,11 @@ uint64_t bench_2(const uint64_t predicate) {
     col_t* lo_extendedprice;
     std::vector<std::string> idents{"lo_discount", "lo_quantity", "lo_extendedprice"};
 
+    auto s_ts = std::chrono::high_resolution_clock::now();
+
     if (remote) {
         DataCatalog::getInstance().fetchRemoteInfo();
+        infoTime += (std::chrono::high_resolution_clock::now() - s_ts);
 
         lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
         if (prefetching && !paxed) lo_discount->request_data(!chunked);
@@ -301,10 +330,11 @@ uint64_t bench_2(const uint64_t predicate) {
         lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
     }
 
+    size_t columnSize = lo_discount->size;
+
     size_t max_elems_per_chunk = 0;
-    if (chunked) {
-        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t);
-    } else if (paxed) {
+    size_t currentBlockSize = max_elems_per_chunk;
+    if (paxed) {
         size_t total_id_len = 0;
         for (auto& id : idents) {
             total_id_len += id.size();
@@ -314,15 +344,22 @@ uint64_t bench_2(const uint64_t predicate) {
         const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(1)->maxBytesInPayload(appMetaSize);
 
         max_elems_per_chunk = maximumPayloadSize / sizeof(uint64_t) / idents.size();
+        currentBlockSize = max_elems_per_chunk;
+    } else if (!(remote && (chunked || paxed))) {
+        max_elems_per_chunk = columnSize;
+        currentBlockSize = OPTIMAL_BLOCK_SIZE / sizeof(uint64_t);
     } else {
-        max_elems_per_chunk = lo_discount->size;
+        max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t);
+        if (max_elems_per_chunk <= OPTIMAL_BLOCK_SIZE / sizeof(uint64_t)) {
+            currentBlockSize = max_elems_per_chunk;
+        } else {
+            currentBlockSize = OPTIMAL_BLOCK_SIZE / sizeof(uint64_t);
+        }
     }
 
     uint64_t sum = 0;
     size_t baseOffset = 0;
-    size_t currentChunkElements = max_elems_per_chunk;
-
-    size_t columnSize = lo_discount->size;
+    size_t currentChunkElementsProcessed = 0;
 
     auto data_le = reinterpret_cast<uint64_t*>(lo_extendedprice->data);
     auto data_ld = reinterpret_cast<uint64_t*>(lo_discount->data);
@@ -335,126 +372,151 @@ uint64_t bench_2(const uint64_t predicate) {
         }
 
         const size_t elem_diff = columnSize - baseOffset;
-        if (elem_diff < max_elems_per_chunk) {
-            currentChunkElements = elem_diff;
+        if (elem_diff < currentBlockSize) {
+            currentBlockSize = elem_diff;
         }
 
-        auto le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, predicate, baseOffset, currentChunkElements, {});
+        auto le_idx = less_than<remote, chunked, paxed, prefetching, true>(lo_quantity, predicate, baseOffset, currentBlockSize, {}, currentChunkElementsProcessed == 0);
 
-        for (auto idx : le_idx) {
-            if (remote && !paxed) {
-                if (!prefetching) {
+        if (remote && !paxed) {
+            s_ts = std::chrono::high_resolution_clock::now();
+            if (currentChunkElementsProcessed == 0) {
+                if (!prefetching && chunked) {
                     lo_extendedprice->request_data(!chunked);
                     lo_discount->request_data(!chunked);
                 }
                 wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(data_le));
                 wait_col_data_ready(lo_discount, reinterpret_cast<char*>(data_ld));
-                if (prefetching) {
+                s_ts = std::chrono::high_resolution_clock::now();
+                if (prefetching && chunked) {
                     lo_extendedprice->request_data(!chunked);
                     lo_discount->request_data(!chunked);
                 }
             }
+        }
 
+        s_ts = std::chrono::high_resolution_clock::now();
+        for (auto idx : le_idx) {
             sum += (data_ld[idx] * data_le[idx]);
             // ++sum;
         }
+        workingTime += (std::chrono::high_resolution_clock::now() - s_ts);
 
-        baseOffset += currentChunkElements;
-        data_ld += currentChunkElements;
-        data_le += currentChunkElements;
+        baseOffset += currentBlockSize;
+        data_ld += currentBlockSize;
+        data_le += currentBlockSize;
+        currentChunkElementsProcessed = baseOffset % max_elems_per_chunk;
     }
 
     return sum;
 }
 
 template <typename Fn>
-void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, Fn&& f7, std::ofstream& out, uint64_t predicate) {
+void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofstream& out, uint64_t predicate) {
+    uint64_t sum = 0;
+    std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
+    std::chrono::time_point<std::chrono::high_resolution_clock> e_ts;
+    std::chrono::duration<double> secs;
+
     for (size_t i = 0; i < 5; ++i) {
-        auto s_ts = std::chrono::high_resolution_clock::now();
-        auto sum = f1(predicate);
-        auto e_ts = std::chrono::high_resolution_clock::now();
+        reset_timer();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f1(predicate);
+        e_ts = std::chrono::high_resolution_clock::now();
 
-        std::chrono::duration<double> secs = e_ts - s_ts;
+        secs = e_ts - s_ts;
+        auto additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-        out << "Local\tFull\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
+        out << "Local\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
             << std::flush;
-        std::cout << "Local\tFull\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
+        std::cout << "Local\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
+        // reset_timer();
+        // s_ts = std::chrono::high_resolution_clock::now();
+        // sum = f2(predicate);
+        // e_ts = std::chrono::high_resolution_clock::now();
+
+        // secs = e_ts - s_ts;
+
+        // out << "Remote\tFull\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
+        //     << std::flush;
+        // std::cout << "Remote\tFull\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl;
+
+        // DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        reset_timer();
         s_ts = std::chrono::high_resolution_clock::now();
         sum = f2(predicate);
         e_ts = std::chrono::high_resolution_clock::now();
 
         secs = e_ts - s_ts;
+        additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-        out << "Remote\tFull\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
+        out << "Remote\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
             << std::flush;
-        std::cout << "Remote\tFull\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
+        std::cout << "Remote\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = f3(predicate);
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tFull\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
-            << std::flush;
-        std::cout << "Remote\tFull\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        for (uint64_t chunkSize = 1ull << 15; chunkSize <= 1ull << 25; chunkSize <<= 1) {
+        for (uint64_t chunkSize = 1ull << 14; chunkSize <= 1ull << 25; chunkSize <<= 1) {
             DataCatalog::getInstance().reconfigureChunkSize(chunkSize, chunkSize);
 
+            reset_timer();
+            s_ts = std::chrono::high_resolution_clock::now();
+            sum = f3(predicate);
+            e_ts = std::chrono::high_resolution_clock::now();
+
+            secs = e_ts - s_ts;
+            additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
+
+            out << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
+                << std::flush;
+            std::cout << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+
+            DataCatalog::getInstance().eraseAllRemoteColumns();
+
+            reset_timer();
             s_ts = std::chrono::high_resolution_clock::now();
             sum = f4(predicate);
             e_ts = std::chrono::high_resolution_clock::now();
 
             secs = e_ts - s_ts;
+            additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-            out << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
+            out << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << "Remote\tChunked\tOper\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
-
-            DataCatalog::getInstance().eraseAllRemoteColumns();
-
-            s_ts = std::chrono::high_resolution_clock::now();
-            sum = f5(predicate);
-            e_ts = std::chrono::high_resolution_clock::now();
-
-            secs = e_ts - s_ts;
-
-            out << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
-                << std::flush;
-            std::cout << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
+            std::cout << "Remote\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
 
             DataCatalog::getInstance().eraseAllRemoteColumns();
         }
 
+        reset_timer();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f5(predicate);
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        secs = e_ts - s_ts;
+        additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
+
+        out << "Remote\tPaxed\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
+            << std::flush;
+        std::cout << "Remote\tPaxed\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        reset_timer();
         s_ts = std::chrono::high_resolution_clock::now();
         sum = f6(predicate);
         e_ts = std::chrono::high_resolution_clock::now();
 
         secs = e_ts - s_ts;
+        additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-        out << "Remote\tPaxed\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
+        out << "Remote\tPaxed\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
             << std::flush;
-        std::cout << "Remote\tPaxed\tOper\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = f7(predicate);
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-
-        out << "Remote\tPaxed\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl
-            << std::flush;
-        std::cout << "Remote\tPaxed\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << secs.count() << std::endl;
+        std::cout << "Remote\tPaxed\tPipe\t000000\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
     }
@@ -464,18 +526,20 @@ void executeAllBenchmarkingQueries(std::string& logName) {
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
+    std::cout << std::fixed << std::setprecision(7) << std::endl;
 
-    doBenchmark(bench_1<false, false, false, false>,
-                bench_1<true, false, false, false>,
-                bench_1<true, false, false, true>,
-                bench_1<true, true, false, false>,
-                bench_1<true, true, false, true>,
-                bench_1<true, false, true, false>,
-                bench_1<true, false, true, true>,
-                out, 0);
+    // <bool remote, bool chunked, bool paxed, bool prefetching>
+
+    // doBenchmark(bench_1<false, false, false, false>,
+    //             bench_1<true, false, false, false>,
+    //             bench_1<true, false, false, true>,
+    //             bench_1<true, true, false, false>,
+    //             bench_1<true, true, false, true>,
+    //             bench_1<true, false, true, false>,
+    //             bench_1<true, false, true, true>,
+    //             out, 0);
 
     doBenchmark(bench_2<false, false, false, false>,
-                bench_2<true, false, false, false>,
                 bench_2<true, false, false, true>,
                 bench_2<true, true, false, false>,
                 bench_2<true, true, false, true>,
@@ -483,7 +547,6 @@ void executeAllBenchmarkingQueries(std::string& logName) {
                 bench_2<true, false, true, true>,
                 out, 100);
     doBenchmark(bench_2<false, false, false, false>,
-                bench_2<true, false, false, false>,
                 bench_2<true, false, false, true>,
                 bench_2<true, true, false, false>,
                 bench_2<true, true, false, true>,
@@ -491,7 +554,6 @@ void executeAllBenchmarkingQueries(std::string& logName) {
                 bench_2<true, false, true, true>,
                 out, 75);
     doBenchmark(bench_2<false, false, false, false>,
-                bench_2<true, false, false, false>,
                 bench_2<true, false, false, true>,
                 bench_2<true, true, false, false>,
                 bench_2<true, true, false, true>,
@@ -499,7 +561,6 @@ void executeAllBenchmarkingQueries(std::string& logName) {
                 bench_2<true, false, true, true>,
                 out, 50);
     doBenchmark(bench_2<false, false, false, false>,
-                bench_2<true, false, false, false>,
                 bench_2<true, false, false, true>,
                 bench_2<true, true, false, false>,
                 bench_2<true, true, false, true>,
@@ -507,7 +568,6 @@ void executeAllBenchmarkingQueries(std::string& logName) {
                 bench_2<true, false, true, true>,
                 out, 25);
     doBenchmark(bench_2<false, false, false, false>,
-                bench_2<true, false, false, false>,
                 bench_2<true, false, false, true>,
                 bench_2<true, true, false, false>,
                 bench_2<true, true, false, true>,
