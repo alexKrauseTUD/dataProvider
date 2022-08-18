@@ -239,18 +239,24 @@ DataCatalog::DataCatalog() {
 
                 std::cout << "[Task] Set name: " << logName << std::endl;
 
-                buffer_config_t bufferConfig = {.num_own_receive = num_rb,
-                                                .size_own_receive = bytes + package_t::metaDataSize(),
-                                                .num_remote_receive = num_rb,
-                                                .size_remote_receive = bytes + package_t::metaDataSize(),
-                                                .size_own_send = (bytes + package_t::metaDataSize()) * num_rb,
-                                                .size_remote_send = (bytes + package_t::metaDataSize()) * num_rb,
-                                                .meta_info_size = 16};
+                buffer_config_t bufferConfig = {.num_own_send_threads = 2,
+                                            .num_own_receive_threads = 2,
+                                            .num_remote_send_threads = 2,
+                                            .num_remote_receive_threads = 2,
+                                            .num_own_receive = num_rb,
+                                            .size_own_receive = bytes,
+                                            .num_remote_receive = num_rb,
+                                            .size_remote_receive = bytes,
+                                            .num_own_send = num_rb,
+                                            .size_own_send = bytes,
+                                            .num_remote_send = num_rb,
+                                            .size_remote_send = bytes,
+                                            .meta_info_size = 16};
 
                 ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
 
                 using namespace std::chrono_literals;
-                std::this_thread::sleep_for(1s);
+                std::this_thread::sleep_for(2s);
 
                 std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
                 std::cout << std::endl;
