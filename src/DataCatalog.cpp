@@ -263,12 +263,29 @@ DataCatalog::DataCatalog() {
         }
     };
 
+    auto benchQueriesNUMA = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::stringstream logNameStream;
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "NUMA.log";
+        std::string logName = logNameStream.str();
+
+        std::cout << "[Task] Set name: " << logName << std::endl;
+
+        executeNUMABenchmarkingQueries(logName);
+
+        std::cout << std::endl;
+        std::cout << "NUMAQueryBench ended." << std::endl;
+    };
+
     TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
     TaskManager::getInstance().registerTask(new Task("benchmark", "[DataCatalog] Execute benchmarking Queries", benchQueries));
+    TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute NUMA benchmarking Queries", benchQueriesNUMA));
     TaskManager::getInstance().registerTask(new Task("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
     TaskManager::getInstance().registerTask(new Task("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
 

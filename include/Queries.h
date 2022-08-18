@@ -13,5 +13,6 @@
 #include <functional>
 
 void executeAllBenchmarkingQueries(std::string& logName);
+void executeNUMABenchmarkingQueries(std::string& logName);
 
 #endif
