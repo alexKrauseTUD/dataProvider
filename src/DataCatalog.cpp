@@ -227,14 +227,14 @@ DataCatalog::DataCatalog() {
         fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
     };
 
-    auto benchQueries = [this]() -> void {
+    auto benchQueriesRemote = [this]() -> void {
         using namespace std::chrono_literals;
 
         for (uint8_t num_rb = 2; num_rb <= 3; ++num_rb) {
             for (uint64_t bytes = 1ull << 16; bytes <= 1ull << 21; bytes <<= 1) {
                 auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 std::stringstream logNameStream;
-                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << ".log";
+                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << "_Remote.log";
                 std::string logName = logNameStream.str();
 
                 std::cout << "[Task] Set name: " << logName << std::endl;
@@ -255,12 +255,28 @@ DataCatalog::DataCatalog() {
                 std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
                 std::cout << std::endl;
 
-                executeAllBenchmarkingQueries(logName);
+                executeRemoteBenchmarkingQueries(logName);
             }
 
             std::cout << std::endl;
             std::cout << "QueryBench ended." << std::endl;
         }
+    };
+
+    auto benchQueriesLocal = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::stringstream logNameStream;
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "Local.log";
+        std::string logName = logNameStream.str();
+
+        std::cout << "[Task] Set name: " << logName << std::endl;
+
+        executeLocalBenchmarkingQueries(logName, "Local");
+
+        std::cout << std::endl;
+        std::cout << "NUMAQueryBench ended." << std::endl;
     };
 
     auto benchQueriesNUMA = [this]() -> void {
@@ -273,7 +289,7 @@ DataCatalog::DataCatalog() {
 
         std::cout << "[Task] Set name: " << logName << std::endl;
 
-        executeNUMABenchmarkingQueries(logName);
+        executeLocalBenchmarkingQueries(logName, "NUMA");
 
         std::cout << std::endl;
         std::cout << "NUMAQueryBench ended." << std::endl;
@@ -284,7 +300,8 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
-    TaskManager::getInstance().registerTask(new Task("benchmark", "[DataCatalog] Execute benchmarking Queries", benchQueries));
+    TaskManager::getInstance().registerTask(new Task("benchmarkRemote", "[DataCatalog] Execute Remote benchmarking Queries", benchQueriesRemote));
+    TaskManager::getInstance().registerTask(new Task("benchmarkLocal", "[DataCatalog] Execute Local benchmarking Queries", benchQueriesLocal));
     TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute NUMA benchmarking Queries", benchQueriesNUMA));
     TaskManager::getInstance().registerTask(new Task("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
     TaskManager::getInstance().registerTask(new Task("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));

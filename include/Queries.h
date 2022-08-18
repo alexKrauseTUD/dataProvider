@@ -5,14 +5,14 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <functional>
 
-void executeAllBenchmarkingQueries(std::string& logName);
-void executeNUMABenchmarkingQueries(std::string& logName);
+void executeLocalBenchmarkingQueries(std::string& logName, std::string locality);
+void executeRemoteBenchmarkingQueries(std::string& logName);
 
 #endif

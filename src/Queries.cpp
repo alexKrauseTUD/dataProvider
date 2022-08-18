@@ -285,7 +285,7 @@ inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
-uint64_t bench_1(uint64_t predicate) {
+uint64_t bench_1(const uint64_t predicate) {
     col_t* lo_discount;
     col_t* lo_quantity;
     col_t* lo_extendedprice;
@@ -487,7 +487,7 @@ uint64_t bench_2(const uint64_t predicate) {
 }
 
 template <typename Fn>
-void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofstream& out, uint64_t predicate) {
+void doBenchmarkRemotes(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::ofstream& out, const uint64_t predicate) {
     uint64_t sum = 0;
     std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
     std::chrono::time_point<std::chrono::high_resolution_clock> e_ts;
@@ -502,20 +502,6 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
         secs = e_ts - s_ts;
         auto additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-        out << "Local\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
-            << std::flush;
-        std::cout << "Local\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
-
-        DataCatalog::getInstance().eraseAllRemoteColumns();
-
-        reset_timer();
-        s_ts = std::chrono::high_resolution_clock::now();
-        sum = f2(predicate);
-        e_ts = std::chrono::high_resolution_clock::now();
-
-        secs = e_ts - s_ts;
-        additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
-
         out << "Remote\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
             << std::flush;
         std::cout << "Remote\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
@@ -527,7 +513,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
 
             reset_timer();
             s_ts = std::chrono::high_resolution_clock::now();
-            sum = f3(predicate);
+            sum = f2(predicate);
             e_ts = std::chrono::high_resolution_clock::now();
 
             secs = e_ts - s_ts;
@@ -541,7 +527,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
 
             reset_timer();
             s_ts = std::chrono::high_resolution_clock::now();
-            sum = f4(predicate);
+            sum = f3(predicate);
             e_ts = std::chrono::high_resolution_clock::now();
 
             secs = e_ts - s_ts;
@@ -556,7 +542,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
 
         reset_timer();
         s_ts = std::chrono::high_resolution_clock::now();
-        sum = f5(predicate);
+        sum = f4(predicate);
         e_ts = std::chrono::high_resolution_clock::now();
 
         secs = e_ts - s_ts;
@@ -570,7 +556,7 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
 
         reset_timer();
         s_ts = std::chrono::high_resolution_clock::now();
-        sum = f6(predicate);
+        sum = f5(predicate);
         e_ts = std::chrono::high_resolution_clock::now();
 
         secs = e_ts - s_ts;
@@ -584,56 +570,64 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
     }
 }
 
-void executeAllBenchmarkingQueries(std::string& logName) {
+void executeRemoteBenchmarkingQueries(std::string& logName) {
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
     std::cout << std::fixed << std::setprecision(7) << std::endl;
-    std::array predicates{100, 75, 50, 25, 1};
+    const std::array predicates{1, 25, 50, 75, 100};
 
     // <bool remote, bool chunked, bool paxed, bool prefetching>
 
-    doBenchmark(bench_1<false, false, false, false>,  // Local Full Pipe/Oper (no difference for local)
-                bench_1<true, false, false, true>,    // Remote Full Pipe/Oper (difference due to block-wise evaluation not significant)
-                bench_1<true, true, false, false>,    // Remote Chunked Oper
-                bench_1<true, true, false, true>,     // Remote Chunked Pipe
-                bench_1<true, false, true, false>,    // Remote Paxed Oper
-                bench_1<true, false, true, true>,     // Remote Paxed Pipe
-                out, 0);
+    doBenchmarkRemotes(bench_1<true, false, false, true>,  // Remote Full Pipe/Oper (difference due to block-wise evaluation not significant)
+                       bench_1<true, true, false, false>,  // Remote Chunked Oper
+                       bench_1<true, true, false, true>,   // Remote Chunked Pipe
+                       bench_1<true, false, true, false>,  // Remote Paxed Oper
+                       bench_1<true, false, true, true>,   // Remote Paxed Pipe
+                       out, 0);
 
-    for (auto predicate : predicates) {
-        doBenchmark(bench_2<false, false, false, false>,  // Local Full Pipe/Oper (no difference for local)
-                    bench_2<true, false, false, true>,    // Remote Full Pipe/Oper (difference due to block-wise evaluation not significant)
-                    bench_2<true, true, false, false>,    // Remote Chunked Oper
-                    bench_2<true, true, false, true>,     // Remote Chunked Pipe
-                    bench_2<true, false, true, false>,    // Remote Paxed Oper
-                    bench_2<true, false, true, true>,     // Remote Paxed Pipe
-                    out, predicate);
+    for (const auto predicate : predicates) {
+        doBenchmarkRemotes(bench_2<true, false, false, true>,  // Remote Full Pipe/Oper (difference due to block-wise evaluation not significant)
+                           bench_2<true, true, false, false>,  // Remote Chunked Oper
+                           bench_2<true, true, false, true>,   // Remote Chunked Pipe
+                           bench_2<true, false, true, false>,  // Remote Paxed Oper
+                           bench_2<true, false, true, true>,   // Remote Paxed Pipe
+                           out, predicate);
     }
 
     out.close();
 }
 
-void executeNUMABenchmarkingQueries(std::string& logName) {
+void executeLocalBenchmarkingQueries(std::string& logName, std::string locality) {
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
     std::cout << std::fixed << std::setprecision(7) << std::endl;
-    std::array predicates{100, 75, 50, 25, 1};
+    const std::array predicates{0, 1, 25, 50, 75, 100};
+    uint64_t sum = 0;
+    std::chrono::_V2::system_clock::time_point s_ts;
+    std::chrono::_V2::system_clock::time_point e_ts;
 
-    for (auto predicate : predicates) {
+    for (const auto predicate : predicates) {
         for (size_t i = 0; i < 50; ++i) {
             reset_timer();
-            auto s_ts = std::chrono::high_resolution_clock::now();
-            auto sum = bench_2<false, false, false, false>(predicate);
-            auto e_ts = std::chrono::high_resolution_clock::now();
+
+            if (predicate == 0) {
+                s_ts = std::chrono::high_resolution_clock::now();
+                sum = bench_1<false, false, false, false>(predicate);
+                e_ts = std::chrono::high_resolution_clock::now();
+            } else {
+                s_ts = std::chrono::high_resolution_clock::now();
+                sum = bench_2<false, false, false, false>(predicate);
+                e_ts = std::chrono::high_resolution_clock::now();
+            }
 
             std::chrono::duration<double> secs = e_ts - s_ts;
             auto additional_time = secs.count() - (workingTime.count() + infoTime.count() + waitingTime.count());
 
-            out << "NUMA\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
+            out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << "NUMA\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+            std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << infoTime.count() << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
         }
     }
 
