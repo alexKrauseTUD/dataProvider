@@ -345,7 +345,7 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, col.first.c_str(), identlen);
             tmp += identlen;
         }
-        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code);
+        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code, Strategies::push);
 
         // Release temporary buffer
         free(data);
@@ -479,7 +479,7 @@ DataCatalog::DataCatalog() {
 
             memcpy(tmp, &col->second->datatype, sizeof(col_data_t));
 
-            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data));
+            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data), Strategies::push);
 
             free(appMetaData);
         }
@@ -617,7 +617,7 @@ DataCatalog::DataCatalog() {
             info->curr_offset += chunk_size;
             // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
 
-            ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk));
+            ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk), Strategies::push);
 
             free(appMetaData);
         }
@@ -824,7 +824,7 @@ DataCatalog::DataCatalog() {
 
             reset_buffer();
 
-            ConnectionManager::getInstance().sendData(conId, payload, bytes_in_payload, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax));
+            ConnectionManager::getInstance().sendData(conId, payload, bytes_in_payload, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
             info->curr_offset += bytes_per_column;
             // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
 
@@ -1136,7 +1136,7 @@ void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool whole
     memcpy(payload, &sz, sizeof(size_t));
     memcpy(payload + sizeof(size_t), ident.c_str(), sz);
     catalog_communication_code code = wholeColumn ? catalog_communication_code::fetch_column_data : catalog_communication_code::fetch_column_chunk;
-    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code));
+    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code), Strategies::push);
     free(payload);
 }
 
@@ -1199,7 +1199,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
         tmp += id.size();
     }
     const size_t total_payload_size = (sizeof(size_t) * (idents.size() + 1)) + string_sizes;
-    ConnectionManager::getInstance().sendData(conId, payload, total_payload_size, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_pseudo_pax));
+    ConnectionManager::getInstance().sendData(conId, payload, total_payload_size, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_pseudo_pax), Strategies::push);
     free(payload);
 }
 
@@ -1237,6 +1237,6 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
 
     std::unique_lock<std::mutex> lk(reconfigure_lock);
     reconfigured = false;
-    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
+    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), Strategies::push);
     reconfigure_done.wait(lk, [this] { return reconfigured; });
 }
