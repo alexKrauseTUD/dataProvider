@@ -521,9 +521,9 @@ DataCatalog::DataCatalog() {
         //           << " AppMetaDataSize: " << head->payload_start << " Bytes"
         //           << std::endl;
 
+        std::unique_lock<std::mutex> lk(remote_info_lock);
         auto col = find_remote(ident);
 
-        std::unique_lock<std::mutex> lk(remote_info_lock);
         auto col_network_info_iterator = remote_col_info.find(ident);
         lk.unlock();
 
@@ -544,9 +544,10 @@ DataCatalog::DataCatalog() {
         lk.lock();
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
-        // std::cout << ident << "\t" << head->package_number << "\t" << head->payload_position_offset << "\t" << head->total_data_size << "\t" << head->current_payload_size + head->payload_position_offset << "\t" << col_network_info_iterator->second.received_bytes << std::endl;
+        // std::cout << ident << "\t" << head->package_number << "\t" << head->payload_position_offset << "\t" << head->total_data_size << "\t" << col_network_info_iterator->second.received_bytes << std::endl;
 
-        if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
+        std::lock_guard<std::mutex> lg(col->iteratorLock);
+        if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
             col->is_complete = true;
             ++col->received_chunks;
             col->advance_end_pointer(head->total_data_size);
@@ -695,19 +696,15 @@ DataCatalog::DataCatalog() {
         // lk.unlock();
 
         std::lock_guard<std::mutex> lg(col->iteratorLock);
-        if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
-            col->advance_end_pointer(head->total_data_size);
-            if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
-                col->is_complete = true;
-                // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
-            }
-            ++col->received_chunks;
-            // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
-        } else if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
+        if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
             col->advance_end_pointer(head->total_data_size);
             col->is_complete = true;
             ++col->received_chunks;
             // std::cout << "[DataCatalog] Received all data for column: " << ident << std::endl;
+        } else if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
+            col->advance_end_pointer(head->total_data_size);
+            ++col->received_chunks;
+            // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
         }
 
         reset_buffer();
