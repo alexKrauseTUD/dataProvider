@@ -296,10 +296,13 @@ uint64_t bench_1(const uint64_t predicate) {
     if (remote) {
         lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
         if (prefetching && !paxed) lo_discount->request_data(!chunked);
+        // wait_col_data_ready(lo_discount, reinterpret_cast<char*>(lo_discount->data));
         lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
         if (prefetching && !paxed) lo_quantity->request_data(!chunked);
+        // wait_col_data_ready(lo_quantity, reinterpret_cast<char*>(lo_quantity->data));
         lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
         if (prefetching && !paxed) lo_extendedprice->request_data(!chunked);
+        // wait_col_data_ready(lo_extendedprice, reinterpret_cast<char*>(lo_extendedprice->data));
 
         if (prefetching && paxed) DataCatalog::getInstance().fetchPseudoPax(1, idents);
     } else {
@@ -371,6 +374,14 @@ uint64_t bench_1(const uint64_t predicate) {
         data_le += currentBlockSize;
         currentChunkElementsProcessed = baseOffset % max_elems_per_chunk;
     }
+
+    // lo_quantity->log_to_file(std::string(lo_quantity->ident + ".log"));
+    // lo_extendedprice->log_to_file(std::string(lo_extendedprice->ident + ".log"));
+    // lo_discount->log_to_file(std::string(lo_discount->ident + ".log"));
+
+    // std::cout << "lo_quantity CS:\t" << lo_quantity->calc_checksum() << std::endl;
+    // std::cout << "lo_extendedprice CS:\t" << lo_extendedprice->calc_checksum() << std::endl;
+    // std::cout << "lo_discount CS:\t" << lo_discount->calc_checksum() << std::endl;
 
     return sum;
 }

@@ -466,8 +466,9 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
-        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
         auto col = cols.find(ident);
+
+        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << " and CS " << col->second->calc_checksum() << std::endl;
 
         reset_buffer();
 
@@ -514,6 +515,27 @@ DataCatalog::DataCatalog() {
         col_data_t data_type;
         memcpy(&data_type, data, sizeof(col_data_t));
 
+
+        // uint64_t* ptr = reinterpret_cast<uint64_t*>(column_data);
+        // // for (size_t i = 0; i < head->current_payload_size / sizeof(uint64_t); ++i) {
+        // //     if (ptr[i] == 0 && ptr[i + 1] == 0 && ptr[i + 2] == 0) {
+        // //         std::cout << ident << "\t" << i << "\t";
+        // //         for (size_t k = 0; k < 10; ++k, ++i) {
+        // //             if (i >= head->current_payload_size / sizeof(uint64_t)) break;
+        // //             std::cout << ptr[i] << "\t";
+        // //         }
+        // //         std::cout << std::endl;
+        // //     }
+        // // }
+        // bool allZero = true;
+        // for (size_t i = 0; i < head->current_payload_size / sizeof(uint64_t); ++i) {
+        //     allZero = allZero && ptr[i] == 0;
+        // }
+
+        // if (allZero) {
+        //     std::cout << "There was a whole Buffer filled with 0 for " << ident << std::endl;
+        // }
+
         // std::cout << "Total Message size - header_t: " << sizeof(package_t::header_t) << " AppMetaDataSize: " << head->payload_start << " Payload size: " << head->current_payload_size << " Sum: " << sizeof(package_t::header_t) + head->payload_start + head->current_payload_size << std::endl;
         // std::cout << "Received data for column: " << ident
         //           << " of type " << col_network_info::col_data_type_to_string(data_type)
@@ -544,11 +566,11 @@ DataCatalog::DataCatalog() {
         col->append_chunk(head->payload_position_offset, head->current_payload_size, column_data);
         // Update network info struct to check if we received all data
         lk.lock();
+        std::lock_guard<std::mutex> lg(col->iteratorLock);
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
         // std::cout << ident << "\t" << head->package_number << "\t" << head->payload_position_offset << "\t" << head->total_data_size << "\t" << col_network_info_iterator->second.received_bytes << std::endl;
 
-        std::lock_guard<std::mutex> lg(col->iteratorLock);
         if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
             col->is_complete = true;
             ++col->received_chunks;
@@ -694,10 +716,10 @@ DataCatalog::DataCatalog() {
         col->append_chunk(chunk_total_offset, head->current_payload_size, column_data);
         // Update network info struct to check if we received all data
         lk.lock();
+        std::lock_guard<std::mutex> lg(col->iteratorLock);
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
         // lk.unlock();
 
-        std::lock_guard<std::mutex> lg(col->iteratorLock);
         if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
             col->advance_end_pointer(head->total_data_size);
             col->is_complete = true;
@@ -866,7 +888,7 @@ DataCatalog::DataCatalog() {
             info->offset_lock.lock();
             if (!info->prepare_triggered) {
                 info->prepare_triggered = true;
-                info->prepare_thread = new std::thread(prepare_pax, info, conId); // Will be joined when reseting/deleting the info state
+                info->prepare_thread = new std::thread(prepare_pax, info, conId);  // Will be joined when reseting/deleting the info state
             }
             info->offset_lock.unlock();
 
@@ -889,7 +911,7 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, &offset_size_pair.first, sizeof(size_t));
             tmp += sizeof(size_t);
 
-            const size_t bpc = offset_size_pair.second / info->cols.size(); // Normalize to bytes per column because pair contains total payload size
+            const size_t bpc = offset_size_pair.second / info->cols.size();  // Normalize to bytes per column because pair contains total payload size
             memcpy(tmp, &bpc, sizeof(size_t));
             tmp += sizeof(size_t);
 
@@ -897,7 +919,7 @@ DataCatalog::DataCatalog() {
             // std::cout << "Sent chunk. With offset: " << offset_size_pair.first << " and size " << offset_size_pair.second / info->cols.size() << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
 
             free(tmp_meta);
-            if ( info->prepare_complete && info->prepared_offsets.empty() ) {
+            if (info->prepare_complete && info->prepared_offsets.empty()) {
                 info->reset();
             }
         } else {
