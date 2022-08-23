@@ -4,6 +4,8 @@
 #include <Queries.h>
 #include <TaskManager.h>
 
+#include <thread>
+
 DataCatalog::DataCatalog() {
     auto createColLambda = [this]() -> void {
         std::cout << "[DataCatalog]";
@@ -720,7 +722,6 @@ DataCatalog::DataCatalog() {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
         char* data = rcv_buffer->buf + sizeof(package_t::header_t);
         size_t* ident_lens = reinterpret_cast<size_t*>(data);
-        size_t ident_len_sum = 0;
 
         // Advance data to the first ident character
         data += (ident_lens[0] + 1) * sizeof(size_t);
@@ -732,7 +733,6 @@ DataCatalog::DataCatalog() {
         for (size_t i = 0; i < ident_lens[0]; ++i) {
             idents.emplace_back(data, ident_lens[i + 1]);
             data += ident_lens[i + 1];
-            ident_len_sum += ident_lens[i + 1];
             // std::cout << "Requesting pseudo pax for " << idents.back() << std::endl;
         }
 
@@ -774,74 +774,134 @@ DataCatalog::DataCatalog() {
             auto inflight_info_it = pax_inflight_cols.find(global_ident);
             // No intermediate for requested column. Creating a new entry in the dict.
             if (inflight_info_it == pax_inflight_cols.end()) {
-                pax_inflight_col_info_t new_info;
+                pax_inflight_col_info_t* new_info = new pax_inflight_col_info_t();
                 for (auto col_it : col_its) {
-                    new_info.cols.push_back(col_it->second);
+                    new_info->cols.push_back(col_it->second);
                 }
-                new_info.curr_offset = 0;
                 pax_inflight_cols.insert({global_ident, new_info});
-                info = &pax_inflight_cols.find(global_ident)->second;
+                info = new_info;
             } else {
-                info = &inflight_info_it->second;
+                info = inflight_info_it->second;
             }
             paxInflightLock.unlock();
 
-            // Checking first column suffices, all have same length
-            if (info->curr_offset == (info->cols[0])->sizeInBytes) {
-                // std::cout << "[DataCatalog] PAX for " << global_ident << " reset offset to 0." << std::endl;
-                info->curr_offset = 0;
+            // // Checking first column suffices, all have same length
+            // if (info->curr_offset == (info->cols[0])->sizeInBytes) {
+            //     // std::cout << "[DataCatalog] PAX for " << global_ident << " reset offset to 0." << std::endl;
+            //     info->curr_offset = 0;
+            // }
+
+            info->offset_lock.lock();
+            if (info->metadata_size == 0) {
+                /* Message Layout
+                 * [ header_t | chunk_offset bytes_per_column col_cnt [ident_len]+, [ident] | [payload] ]
+                 */
+                const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
+                const size_t ident_metainfo_size = (1 + idents.size()) * sizeof(size_t) + total_id_len;
+
+                // std::cout << "Init info->metadata_buf " << appMetaSize << " Bytes" << std::endl;
+                info->metadata_buf = (char*)malloc(appMetaSize);
+                char* tmp = info->metadata_buf;
+                tmp += sizeof(size_t);  // Placeholder for offset, later.
+                tmp += sizeof(size_t);  // Placeholder for bytes_per_column, later.
+
+                memcpy(tmp, ident_lens, ident_metainfo_size);
+                // std::cout << "Metadata size: " << ident_metainfo_size << std::endl;
+                // for (size_t test = 0; test < idents.size() + 1; ++test) {
+                //     std::cout << "tmp[" << test << "]: " << reinterpret_cast<size_t*>(tmp)[test] << std::endl;
+                // }
+
+                info->metadata_size = appMetaSize;
             }
+            info->offset_lock.unlock();
 
-            /* Message Layout
-             * [ header_t | chunk_offset bytes_per_column col_cnt [ident_len]+, [ident] | [payload] ]
-             */
-            const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
-            // We just <know> that we use 64bit values
-            // TODO: Infer from column data_type member
-            const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(appMetaSize);
+            auto prepare_pax = [](pax_inflight_col_info_t* my_info, size_t conId) -> void {
+                my_info->offset_lock.lock();
+                if (my_info->payload_buf == nullptr) {
+                    my_info->payload_buf = (char*)malloc(my_info->cols[0]->sizeInBytes * my_info->cols.size());
+                } else {
+                    my_info->offset_lock.unlock();
+                    return;
+                }
+                my_info->offset_lock.unlock();
 
-            char* appMetaData = (char*)malloc(appMetaSize);
-            char* tmp = appMetaData;
+                char* tmp = my_info->payload_buf;
 
-            // Write chunk offset relative to column start into meta data
-            memcpy(tmp, &info->curr_offset, sizeof(size_t));
-            tmp += sizeof(size_t);
+                size_t data_left_to_write = my_info->cols[0]->sizeInBytes;
+                size_t curr_offset = 0;
 
-            // How much data ist left to send
-            const size_t remaining_size = info->cols[0]->sizeInBytes - info->curr_offset;
+                while (data_left_to_write > 0) {
+                    // How much data ist left to send
+                    const size_t remaining_size = my_info->cols[0]->sizeInBytes - curr_offset;
 
-            // We will always only send 1 message, see maximumPayloadSize. Normalize to 8 Byte members
-            using element_type = uint64_t;
-            const size_t max_bytes_per_column = ((maximumPayloadSize / idents.size()) / sizeof(element_type)) * sizeof(element_type);
-            const size_t bytes_per_column = (remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size;
-            const size_t bytes_in_payload = idents.size() * bytes_per_column;
+                    // We will always only send 1 message, see maximumPayloadSize. Normalize to 8 Byte members
+                    using element_type = uint64_t;
+                    // We just <know> that we use 64bit values
+                    // TODO: Infer from column data_type member
+                    const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(my_info->metadata_size);
+                    const size_t max_bytes_per_column = ((maximumPayloadSize / my_info->cols.size()) / sizeof(element_type)) * sizeof(element_type);
+                    const size_t bytes_per_column = (remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size;
+                    const size_t bytes_in_payload = my_info->cols.size() * bytes_per_column;
 
-            memcpy(tmp, &bytes_per_column, sizeof(size_t));
-            tmp += sizeof(size_t);
+                    // std::cout << curr_offset << " " << remaining_size << " " << maximumPayloadSize << " " << max_bytes_per_column << " " << bytes_per_column << " " << bytes_in_payload << std::endl;
 
-            // Copy col_cnt, ident sizes and idents from incoming message as return info
-            const size_t ident_metainfo_size = (1 + idents.size()) * sizeof(size_t) + ident_len_sum;
-            memcpy(tmp, ident_lens, ident_metainfo_size);
-            tmp += sizeof(ident_metainfo_size);
+                    for (auto cur_col : my_info->cols) {
+                        const char* col_data = reinterpret_cast<char*>(cur_col->data) + curr_offset;
+                        memcpy(tmp, col_data, bytes_per_column);
+                        tmp += bytes_per_column;
+                    }
 
-            // Create payload...must be somehow made better
-            char* payload = (char*)malloc(bytes_in_payload);
-            tmp = payload;
+                    my_info->offset_lock.lock();
+                    my_info->prepared_offsets.push({curr_offset, bytes_in_payload});
+                    my_info->offset_cv.notify_one();
+                    my_info->offset_lock.unlock();
 
-            for (auto cur_col : info->cols) {
-                const char* col_data = reinterpret_cast<char*>(cur_col->data) + info->curr_offset;
-                memcpy(tmp, col_data, bytes_per_column);
-                tmp += bytes_per_column;
+                    curr_offset += bytes_per_column;
+                    data_left_to_write -= bytes_per_column;
+                }
+                my_info->offset_lock.lock();
+                my_info->prepare_complete = true;
+                my_info->offset_lock.unlock();
+                // std::cout << "Prepared all messages" << std::endl;
+            };
+
+            info->offset_lock.lock();
+            if (!info->prepare_triggered) {
+                info->prepare_triggered = true;
+                info->prepare_thread = new std::thread(prepare_pax, info, conId); // Will be joined when reseting/deleting the info state
             }
+            info->offset_lock.unlock();
 
             reset_buffer();
 
-            ConnectionManager::getInstance().sendData(conId, payload, bytes_in_payload, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
-            info->curr_offset += bytes_per_column;
-            // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
+            std::unique_lock<std::mutex> lk(info->offset_lock);
+            info->offset_cv.wait(lk, [info] { return !info->prepared_offsets.empty(); });
+            lk.unlock();
 
-            free(payload);
-            free(appMetaData);
+            lk.lock();
+            auto offset_size_pair = info->prepared_offsets.front();
+            info->prepared_offsets.pop();
+            // std::cout << "Done Waiting, got a message. Left: " << info->prepared_offsets.size() << std::endl;
+            lk.unlock();
+
+            char* tmp_meta = (char*)malloc(info->metadata_size);
+            char* tmp = tmp_meta;
+            memcpy(tmp, info->metadata_buf, info->metadata_size);
+
+            memcpy(tmp, &offset_size_pair.first, sizeof(size_t));
+            tmp += sizeof(size_t);
+
+            const size_t bpc = offset_size_pair.second / info->cols.size(); // Normalize to bytes per column because pair contains total payload size
+            memcpy(tmp, &bpc, sizeof(size_t));
+            tmp += sizeof(size_t);
+
+            ConnectionManager::getInstance().sendData(conId, info->payload_buf + offset_size_pair.first, offset_size_pair.second, tmp_meta, info->metadata_size, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
+            // std::cout << "Sent chunk. With offset: " << offset_size_pair.first << " and size " << offset_size_pair.second / info->cols.size() << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
+
+            free(tmp_meta);
+            if ( info->prepare_complete && info->prepared_offsets.empty() ) {
+                info->reset();
+            }
         } else {
             reset_buffer();
         }
@@ -875,7 +935,7 @@ DataCatalog::DataCatalog() {
         std::vector<std::string> idents;
         idents.reserve(ident_infos[0]);
 
-        // std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: ";
+        // std::cout << "[PseudoPax] message with " << bytes_per_column << " bytes per column for columns: " << std::flush;
         for (size_t i = 0; i < ident_infos[0]; ++i) {
             idents.emplace_back(data, ident_infos[i + 1]);
             data += ident_infos[i + 1];
@@ -1169,7 +1229,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
         locks.push_back(&ptrs.back()->iteratorLock);
         const bool fetchable = !(ptrs.back()->requested_chunks > ptrs.back()->received_chunks);
         const bool complete = ptrs.back()->is_complete;
-        // std::cout << ptrs.back()->ident << " " << ptrs.back()->requested_chunks << " " << ptrs.back()->received_chunks << " " << ptrs.back()->is_complete << std::endl;
+        std::cout << ptrs.back()->ident << " " << ptrs.back()->requested_chunks << " " << ptrs.back()->received_chunks << " " << ptrs.back()->is_complete << std::endl;
         all_fetchable &= fetchable;
         all_complete &= complete;
     }
