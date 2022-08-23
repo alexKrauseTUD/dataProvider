@@ -232,8 +232,8 @@ DataCatalog::DataCatalog() {
     auto benchQueriesRemote = [this]() -> void {
         using namespace std::chrono_literals;
 
-        for (uint8_t num_rb = 2; num_rb <= 4; ++num_rb) {
-            for (uint64_t bytes = 1ull << 16; bytes <= 1ull << 21; bytes <<= 1) {
+        for (uint8_t num_rb = 3; num_rb <= 4; ++num_rb) {
+            for (uint64_t bytes = 1ull << 19; bytes <= 1ull << 21; bytes <<= 1) {
                 auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 std::stringstream logNameStream;
                 logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << "_Remote.log";
@@ -826,47 +826,52 @@ DataCatalog::DataCatalog() {
                 char* tmp = my_info->payload_buf;
 
                 size_t data_left_to_write = my_info->cols[0]->sizeInBytes;
-                size_t curr_offset = 0;
+                size_t curr_col_offset = 0;
+                size_t curr_payload_offset = 0;
+
+                using element_type = uint64_t;
+                const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(my_info->metadata_size);
+                const size_t max_bytes_per_column = ((maximumPayloadSize / my_info->cols.size()) / sizeof(element_type)) * sizeof(element_type);
+
+                // std::cout << "Preparing " << my_info->cols[0]->sizeInBytes * my_info->cols.size() << " Bytes of data" << std::endl;
+                size_t written_bytes = 0;
 
                 while (data_left_to_write > 0) {
-                    // How much data ist left to send
-                    const size_t remaining_size = my_info->cols[0]->sizeInBytes - curr_offset;
-
                     // We will always only send 1 message, see maximumPayloadSize. Normalize to 8 Byte members
-                    using element_type = uint64_t;
                     // We just <know> that we use 64bit values
                     // TODO: Infer from column data_type member
-                    const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(my_info->metadata_size);
-                    const size_t max_bytes_per_column = ((maximumPayloadSize / my_info->cols.size()) / sizeof(element_type)) * sizeof(element_type);
-                    const size_t bytes_per_column = (remaining_size > max_bytes_per_column) ? max_bytes_per_column : remaining_size;
+                    const size_t bytes_per_column = (data_left_to_write > max_bytes_per_column) ? max_bytes_per_column : data_left_to_write;
                     const size_t bytes_in_payload = my_info->cols.size() * bytes_per_column;
 
-                    // std::cout << curr_offset << " " << remaining_size << " " << maximumPayloadSize << " " << max_bytes_per_column << " " << bytes_per_column << " " << bytes_in_payload << std::endl;
+                    // std::cout << curr_payload_offset << " " << data_left_to_write << " " << bytes_per_column << " " << bytes_in_payload << std::endl;
 
                     for (auto cur_col : my_info->cols) {
-                        const char* col_data = reinterpret_cast<char*>(cur_col->data) + curr_offset;
+                        // std::cout << "Writing " << bytes_per_column << " Bytes for " << cur_col->ident << std::endl;
+                        const char* col_data = reinterpret_cast<char*>(cur_col->data) + curr_col_offset;
                         memcpy(tmp, col_data, bytes_per_column);
                         tmp += bytes_per_column;
+                        written_bytes += bytes_per_column;
                     }
 
                     my_info->offset_lock.lock();
-                    my_info->prepared_offsets.push({curr_offset, bytes_in_payload});
+                    my_info->prepared_offsets.push({curr_payload_offset, bytes_in_payload});
                     my_info->offset_cv.notify_one();
                     my_info->offset_lock.unlock();
 
-                    curr_offset += bytes_per_column;
+                    curr_col_offset += bytes_per_column;
+                    curr_payload_offset += bytes_per_column * my_info->cols.size();
                     data_left_to_write -= bytes_per_column;
                 }
                 my_info->offset_lock.lock();
                 my_info->prepare_complete = true;
                 my_info->offset_lock.unlock();
-                // std::cout << "Prepared all messages" << std::endl;
+                // std::cout << "Prepared all messages, written Bytes: " << written_bytes << std::endl;
             };
 
             info->offset_lock.lock();
             if (!info->prepare_triggered) {
                 info->prepare_triggered = true;
-                info->prepare_thread = new std::thread(prepare_pax, info, conId); // Will be joined when reseting/deleting the info state
+                info->prepare_thread = new std::thread(prepare_pax, info, conId);  // Will be joined when reseting/deleting the info state
             }
             info->offset_lock.unlock();
 
@@ -874,12 +879,11 @@ DataCatalog::DataCatalog() {
 
             std::unique_lock<std::mutex> lk(info->offset_lock);
             info->offset_cv.wait(lk, [info] { return !info->prepared_offsets.empty(); });
-            lk.unlock();
-
-            lk.lock();
+            // Semantically we want to "unlock" after waiting, yet this is a performance gain to not do it.
+            // lk.unlock();
+            // lk.lock();
             auto offset_size_pair = info->prepared_offsets.front();
             info->prepared_offsets.pop();
-            // std::cout << "Done Waiting, got a message. Left: " << info->prepared_offsets.size() << std::endl;
             lk.unlock();
 
             char* tmp_meta = (char*)malloc(info->metadata_size);
@@ -889,15 +893,15 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, &offset_size_pair.first, sizeof(size_t));
             tmp += sizeof(size_t);
 
-            const size_t bpc = offset_size_pair.second / info->cols.size(); // Normalize to bytes per column because pair contains total payload size
+            const size_t bpc = offset_size_pair.second / info->cols.size();  // Normalize to bytes per column because pair contains total payload size
             memcpy(tmp, &bpc, sizeof(size_t));
             tmp += sizeof(size_t);
 
             ConnectionManager::getInstance().sendData(conId, info->payload_buf + offset_size_pair.first, offset_size_pair.second, tmp_meta, info->metadata_size, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
-            // std::cout << "Sent chunk. With offset: " << offset_size_pair.first << " and size " << offset_size_pair.second / info->cols.size() << " Total col size: " << info->cols[0]->sizeInBytes << std::endl;
-
             free(tmp_meta);
-            if ( info->prepare_complete && info->prepared_offsets.empty() ) {
+
+            if (info->prepare_complete && info->prepared_offsets.empty()) {
+                // std::cout << "Resetting myself!" << std::endl;
                 info->reset();
             }
         } else {
@@ -958,6 +962,7 @@ DataCatalog::DataCatalog() {
             }
 
             const size_t current_offset = col_network_info_iterator->second.received_bytes;
+            // std::cout << "Current offset for col (" << col << ") " << col->ident << ": " << current_offset << std::endl;
             col->append_chunk(current_offset, bytes_per_column, pax_ptr);
             pax_ptr += bytes_per_column;
 
@@ -968,7 +973,7 @@ DataCatalog::DataCatalog() {
             col->advance_end_pointer(bytes_per_column);
             if (col_network_info_iterator->second.check_complete()) {
                 col->is_complete = true;
-                // std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
+                std::cout << "[PseudoPax] Received all data for column: " << col->ident << std::endl;
             }
             ++col->received_chunks;
         }
@@ -1226,7 +1231,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
         locks.push_back(&ptrs.back()->iteratorLock);
         const bool fetchable = !(ptrs.back()->requested_chunks > ptrs.back()->received_chunks);
         const bool complete = ptrs.back()->is_complete;
-        std::cout << ptrs.back()->ident << " " << ptrs.back()->requested_chunks << " " << ptrs.back()->received_chunks << " " << ptrs.back()->is_complete << std::endl;
+        // std::cout << ptrs.back()->ident << " " << ptrs.back()->requested_chunks << " " << ptrs.back()->received_chunks << " " << ptrs.back()->is_complete << std::endl;
         all_fetchable &= fetchable;
         all_complete &= complete;
     }
