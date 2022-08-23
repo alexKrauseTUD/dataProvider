@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <queue>
 #include <random>
 #include <sstream>
 #include <string>
@@ -122,13 +123,42 @@ struct inflight_col_info_t {
 
 struct pax_inflight_col_info_t {
     std::vector<col_t*> cols;
-    std::size_t curr_offset;
+    std::queue<std::pair<size_t, size_t> > prepared_offsets;
+    std::mutex offset_lock;
+    std::thread* prepare_thread = nullptr;
+    std::condition_variable offset_cv;
+    size_t metadata_size = 0;
+    bool prepare_triggered = false;
+    bool prepare_complete = false;
+    char* metadata_buf = nullptr;
+    char* payload_buf = nullptr;
+
+    void reset() {
+        std::lock_guard<std::mutex> lk( offset_lock );
+        std::queue<std::pair<size_t, size_t> > empty;
+        prepared_offsets.swap(empty);
+        if (metadata_buf) delete metadata_buf;
+        metadata_buf = nullptr;
+        if (payload_buf) delete payload_buf;
+        payload_buf = nullptr;
+        if (prepare_thread) {
+            prepare_thread->join();
+            delete prepare_thread;
+        }
+        prepare_triggered = false;
+        prepare_complete = false;
+        metadata_size = 0;
+    }
+
+    ~pax_inflight_col_info_t() {
+        reset();
+    }
 };
 
 typedef std::unordered_map<std::string, col_t*> col_dict_t;
 typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
 typedef std::unordered_map<std::string, inflight_col_info_t> incomplete_transimssions_dict_t;
-typedef std::unordered_map<std::string, pax_inflight_col_info_t> incomplete_pax_transimssions_dict_t;
+typedef std::unordered_map<std::string, pax_inflight_col_info_t*> incomplete_pax_transimssions_dict_t;
 
 class DataCatalog {
    private:
