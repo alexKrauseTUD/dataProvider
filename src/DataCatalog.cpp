@@ -232,7 +232,7 @@ DataCatalog::DataCatalog() {
     auto benchQueriesRemote = [this]() -> void {
         using namespace std::chrono_literals;
 
-        for (uint8_t num_rb = 3; num_rb <= 3; ++num_rb) {
+        for (uint8_t num_rb = 2; num_rb <= 4; ++num_rb) {
             for (uint64_t bytes = 1ull << 16; bytes <= 1ull << 21; bytes <<= 1) {
                 auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 std::stringstream logNameStream;
@@ -241,10 +241,10 @@ DataCatalog::DataCatalog() {
 
                 std::cout << "[Task] Set name: " << logName << std::endl;
 
-                buffer_config_t bufferConfig = {.num_own_send_threads = 1,
-                                                .num_own_receive_threads = 1,
-                                                .num_remote_send_threads = 1,
-                                                .num_remote_receive_threads = 1,
+                buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+                                                .num_own_receive_threads = num_rb,
+                                                .num_remote_send_threads = num_rb,
+                                                .num_remote_receive_threads = num_rb,
                                                 .num_own_receive = num_rb,
                                                 .size_own_receive = bytes,
                                                 .num_remote_receive = num_rb,
@@ -466,7 +466,7 @@ DataCatalog::DataCatalog() {
 
         std::string ident(data, identSz);
 
-        std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
+        // std::cout << "[DataCatalog] Remote requested data for column '" << ident << "' with ident len " << identSz << std::endl;
         auto col = cols.find(ident);
 
         reset_buffer();
@@ -535,7 +535,7 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                // std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
                 return;
             }
         }
@@ -546,7 +546,7 @@ DataCatalog::DataCatalog() {
         lk.lock();
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
 
-        std::cout << ident << "\t" << head->package_number << "\t" << head->payload_position_offset << "\t" << head->total_data_size << "\t" << head->current_payload_size + head->payload_position_offset << "\t" << col_network_info_iterator->second.received_bytes << std::endl;
+        // std::cout << ident << "\t" << head->package_number << "\t" << head->payload_position_offset << "\t" << head->total_data_size << "\t" << head->current_payload_size + head->payload_position_offset << "\t" << col_network_info_iterator->second.received_bytes << std::endl;
 
         if (col_network_info_iterator->second.received_bytes == head->total_data_size) {
             col->is_complete = true;
@@ -678,6 +678,7 @@ DataCatalog::DataCatalog() {
                 for (auto k : remote_col_info) {
                     std::cout << k.first << " " << &k.second << std::endl;
                 }
+                return;
             }
         }
 
@@ -693,7 +694,7 @@ DataCatalog::DataCatalog() {
         // Update network info struct to check if we received all data
         lk.lock();
         col_network_info_iterator->second.received_bytes += head->current_payload_size;
-        lk.unlock();
+        // lk.unlock();
 
         std::lock_guard<std::mutex> lg(col->iteratorLock);
         if (col_network_info_iterator->second.received_bytes % head->total_data_size == 0) {
@@ -704,7 +705,7 @@ DataCatalog::DataCatalog() {
             }
             ++col->received_chunks;
             // std::cout << "[DataCatalog] Latest chunk of '" << ident << "' received completely." << std::endl;
-        } else if (chunk_total_offset + head->current_payload_size == col->sizeInBytes) {
+        } else if (col_network_info_iterator->second.received_bytes == col->sizeInBytes) {
             col->advance_end_pointer(head->total_data_size);
             col->is_complete = true;
             ++col->received_chunks;
@@ -1203,7 +1204,6 @@ void DataCatalog::eraseAllRemoteColumns() {
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
-    std::cout << "Fetching ident " << ident << std::endl;
     char* payload = (char*)malloc(ident.size() + sizeof(size_t));
     const size_t sz = ident.size();
     memcpy(payload, &sz, sizeof(size_t));
