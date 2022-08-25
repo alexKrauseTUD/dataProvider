@@ -303,14 +303,91 @@ DataCatalog::DataCatalog() {
         std::cout << "NUMAQueryBench ended." << std::endl;
     };
 
+    auto benchQueriesRemoteMT = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        for (uint8_t num_rb = 2; num_rb <= 2; ++num_rb) {
+            for (uint64_t bytes = 1ull << 18; bytes <= 1ull << 20; bytes <<= 1) {
+                auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                std::stringstream logNameStream;
+                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_" << +num_rb << "_" << +bytes << "_Remote.log";
+                std::string logName = logNameStream.str();
+
+                std::cout << "[Task] Set name: " << logName << std::endl;
+
+                buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+                                                .num_own_receive_threads = num_rb,
+                                                .num_remote_send_threads = num_rb,
+                                                .num_remote_receive_threads = num_rb,
+                                                .num_own_receive = num_rb,
+                                                .size_own_receive = bytes,
+                                                .num_remote_receive = num_rb,
+                                                .size_remote_receive = bytes,
+                                                .num_own_send = num_rb,
+                                                .size_own_send = bytes,
+                                                .num_remote_send = num_rb,
+                                                .size_remote_send = bytes,
+                                                .meta_info_size = 16};
+
+                ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+
+                using namespace std::chrono_literals;
+                std::this_thread::sleep_for(2s);
+
+                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+                std::cout << std::endl;
+
+                executeRemoteMTBenchmarkingQueries(logName);
+            }
+
+            std::cout << std::endl;
+            std::cout << "QueryBench ended." << std::endl;
+        }
+    };
+
+    auto benchQueriesLocalMT = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::stringstream logNameStream;
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_Local.log";
+        std::string logName = logNameStream.str();
+
+        std::cout << "[Task] Set name: " << logName << std::endl;
+
+        executeLocalMTBenchmarkingQueries(logName, "Local");
+
+        std::cout << std::endl;
+        std::cout << "NUMAQueryBench ended." << std::endl;
+    };
+
+    auto benchQueriesNUMAMT = [this]() -> void {
+        using namespace std::chrono_literals;
+
+        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::stringstream logNameStream;
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_NUMA.log";
+        std::string logName = logNameStream.str();
+
+        std::cout << "[Task] Set name: " << logName << std::endl;
+
+        executeLocalMTBenchmarkingQueries(logName, "NUMA");
+
+        std::cout << std::endl;
+        std::cout << "NUMAQueryBench ended." << std::endl;
+    };
+
     TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
     TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
-    TaskManager::getInstance().registerTask(new Task("benchmarkRemote", "[DataCatalog] Execute Remote benchmarking Queries", benchQueriesRemote));
-    TaskManager::getInstance().registerTask(new Task("benchmarkLocal", "[DataCatalog] Execute Local benchmarking Queries", benchQueriesLocal));
-    TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute NUMA benchmarking Queries", benchQueriesNUMA));
+    TaskManager::getInstance().registerTask(new Task("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
+    TaskManager::getInstance().registerTask(new Task("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
+    TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
+    TaskManager::getInstance().registerTask(new Task("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
+    TaskManager::getInstance().registerTask(new Task("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
+    TaskManager::getInstance().registerTask(new Task("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
     TaskManager::getInstance().registerTask(new Task("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
     TaskManager::getInstance().registerTask(new Task("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
 
@@ -514,7 +591,6 @@ DataCatalog::DataCatalog() {
 
         col_data_t data_type;
         memcpy(&data_type, data, sizeof(col_data_t));
-
 
         // uint64_t* ptr = reinterpret_cast<uint64_t*>(column_data);
         // // for (size_t i = 0; i < head->current_payload_size / sizeof(uint64_t); ++i) {
@@ -853,7 +929,7 @@ DataCatalog::DataCatalog() {
 
                 using element_type = uint64_t;
                 const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(conId)->maxBytesInPayload(my_info->metadata_size);
-                const size_t max_bytes_per_column = ((maximumPayloadSize / my_info->cols.size()) / sizeof(element_type)) * sizeof(element_type);
+                const size_t max_bytes_per_column = ((maximumPayloadSize / my_info->cols.size()) / (sizeof(element_type) * 4)) * 4 * sizeof(element_type);
 
                 // std::cout << "Preparing " << my_info->cols[0]->sizeInBytes * my_info->cols.size() << " Bytes of data" << std::endl;
                 size_t written_bytes = 0;
@@ -921,7 +997,7 @@ DataCatalog::DataCatalog() {
 
             ConnectionManager::getInstance().sendData(conId, info->payload_buf + offset_size_pair.first, offset_size_pair.second, tmp_meta, info->metadata_size, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
             free(tmp_meta);
-            if ( info->prepare_complete && info->prepared_offsets.empty() ) {
+            if (info->prepare_complete && info->prepared_offsets.empty()) {
                 info->reset();
             }
         } else {
@@ -1257,9 +1333,9 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
     }
 
     if (all_complete || !all_fetchable) {
-        if (!all_complete) {
-            std::cout << "Pending chunks of current pax request or complete, ignoring." << std::endl;
-        }
+        // if (!all_complete) {
+        //     std::cout << "Pending chunks of current pax request or complete, ignoring." << std::endl;
+        // }
         for (auto lk : locks) {
             lk->unlock();
         }

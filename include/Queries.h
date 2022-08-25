@@ -15,4 +15,7 @@
 void executeLocalBenchmarkingQueries(std::string& logName, std::string locality);
 void executeRemoteBenchmarkingQueries(std::string& logName);
 
+void executeLocalMTBenchmarkingQueries(std::string& logName, std::string locality);
+void executeRemoteMTBenchmarkingQueries(std::string& logName);
+
 #endif
