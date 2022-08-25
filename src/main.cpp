@@ -14,12 +14,12 @@
 int main() {
     std::cout << "Generating Dummy Test Data" << std::endl;
 
-    size_t lineorderSize = 20000000;
+    size_t lineorderSize = 200000000;
 
 #pragma omp parallel for schedule(static, 2) num_threads(6)
     for (size_t i = 0; i < 12; ++i) {
         std::stringstream logNameStream;
-        logNameStream << "lo_" << i;
+        logNameStream << "col_" << i;
         DataCatalog::getInstance().generate(logNameStream.str(), col_data_t::gen_bigint, lineorderSize);
     }
 

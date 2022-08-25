@@ -802,10 +802,10 @@ void executeRemoteMTBenchmarkingQueries(std::string& logName) {
     out << std::fixed << std::setprecision(7) << std::endl;
     std::cout << std::fixed << std::setprecision(7) << std::endl;
 
-    benchmark({"lo_0", "lo_1", "lo_2"}, {{{0, 1, 2}, {0, 1, 2}, {0, 1, 2}, {0, 1, 2}}}, out, "3-3");
-    benchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5"}, {{{0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}}}, out, "2-3");
-    benchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5", "lo_6", "lo_7", "lo_8"}, {{{0, 1, 2}, {0, 3, 4}, {0, 5, 6}, {0, 7, 8}}}, out, "1-3");
-    benchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5", "lo_6", "lo_7", "lo_8", "lo_9", "lo_10", "lo_11"}, {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}}}, out, "0-3");
+    benchmark({"col_0", "col_1", "col_2"}, {{{0, 1, 2}, {0, 1, 2}, {0, 1, 2}, {0, 1, 2}}}, out, "3-3");
+    benchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5"}, {{{0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}}}, out, "2-3");
+    benchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8"}, {{{0, 1, 2}, {0, 3, 4}, {0, 5, 6}, {0, 7, 8}}}, out, "1-3");
+    benchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11"}, {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}}}, out, "0-3");
 
     out.close();
 }
@@ -865,10 +865,10 @@ void executeLocalMTBenchmarkingQueries(std::string& logName, std::string localit
     out << std::fixed << std::setprecision(7) << std::endl;
     std::cout << std::fixed << std::setprecision(7) << std::endl;
 
-    localBenchmark({"lo_0", "lo_1", "lo_2"}, {{{0, 1, 2}, {0, 1, 2}, {0, 1, 2}, {0, 1, 2}}}, out, "3-3", locality);
-    localBenchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5"}, {{{0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}}}, out, "2-3", locality);
-    localBenchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5", "lo_6", "lo_7", "lo_8"}, {{{0, 1, 2}, {0, 3, 4}, {0, 5, 6}, {0, 7, 8}}}, out, "1-3", locality);
-    localBenchmark({"lo_0", "lo_1", "lo_2", "lo_3", "lo_4", "lo_5", "lo_6", "lo_7", "lo_8", "lo_9", "lo_10", "lo_11"}, {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}}}, out, "0-3", locality);
+    localBenchmark({"col_0", "col_1", "col_2"}, {{{0, 1, 2}, {0, 1, 2}, {0, 1, 2}, {0, 1, 2}}}, out, "3-3", locality);
+    localBenchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5"}, {{{0, 1, 2}, {0, 1, 3}, {0, 1, 4}, {0, 1, 5}}}, out, "2-3", locality);
+    localBenchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8"}, {{{0, 1, 2}, {0, 3, 4}, {0, 5, 6}, {0, 7, 8}}}, out, "1-3", locality);
+    localBenchmark({"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11"}, {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}}}, out, "0-3", locality);
 
     out.close();
 }

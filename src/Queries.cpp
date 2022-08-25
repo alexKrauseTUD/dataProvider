@@ -290,21 +290,21 @@ uint64_t bench_1(const uint64_t predicate) {
     col_t* lo_quantity;
     col_t* lo_extendedprice;
     std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
-    const std::vector<std::string> idents{"lo_discount", "lo_quantity", "lo_extendedprice"};
+    const std::vector<std::string> idents{"col_0", "col_1", "col_2"};
 
     if (remote) {
-        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_discount = DataCatalog::getInstance().find_remote("col_0");
         if (prefetching && !paxed) lo_discount->request_data(!chunked);
-        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_quantity = DataCatalog::getInstance().find_remote("col_1");
         if (prefetching && !paxed) lo_quantity->request_data(!chunked);
-        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+        lo_extendedprice = DataCatalog::getInstance().find_remote("col_2");
         if (prefetching && !paxed) lo_extendedprice->request_data(!chunked);
 
         if (prefetching && paxed) DataCatalog::getInstance().fetchPseudoPax(1, idents);
     } else {
-        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
-        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
-        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
+        lo_discount = DataCatalog::getInstance().find_local("col_0");
+        lo_quantity = DataCatalog::getInstance().find_local("col_1");
+        lo_extendedprice = DataCatalog::getInstance().find_local("col_2");
     }
 
     size_t columnSize = lo_discount->size;
@@ -320,7 +320,7 @@ uint64_t bench_1(const uint64_t predicate) {
         const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
         const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(1)->maxBytesInPayload(appMetaSize);
 
-        max_elems_per_chunk = maximumPayloadSize / sizeof(uint64_t) / idents.size();
+        max_elems_per_chunk = ((maximumPayloadSize / idents.size()) / (sizeof(uint64_t) * 4)) * 4;
         currentBlockSize = max_elems_per_chunk;
     } else if (!(remote && (chunked || paxed))) {
         max_elems_per_chunk = columnSize;
@@ -380,21 +380,21 @@ uint64_t bench_2(const uint64_t predicate) {
     col_t* lo_quantity;
     col_t* lo_extendedprice;
     std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
-    const std::vector<std::string> idents{"lo_discount", "lo_quantity", "lo_extendedprice"};
+    const std::vector<std::string> idents{"col_0", "col_1", "col_2"};
 
     if (remote) {
-        lo_quantity = DataCatalog::getInstance().find_remote("lo_quantity");
+        lo_quantity = DataCatalog::getInstance().find_remote("col_1");
         if (prefetching && !paxed) lo_quantity->request_data(!chunked);
-        lo_discount = DataCatalog::getInstance().find_remote("lo_discount");
+        lo_discount = DataCatalog::getInstance().find_remote("col_0");
         if (prefetching && !paxed) lo_discount->request_data(!chunked);
-        lo_extendedprice = DataCatalog::getInstance().find_remote("lo_extendedprice");
+        lo_extendedprice = DataCatalog::getInstance().find_remote("col_2");
         if (prefetching && !paxed) lo_extendedprice->request_data(!chunked);
 
         if (prefetching && paxed) DataCatalog::getInstance().fetchPseudoPax(1, idents);
     } else {
-        lo_discount = DataCatalog::getInstance().find_local("lo_discount");
-        lo_quantity = DataCatalog::getInstance().find_local("lo_quantity");
-        lo_extendedprice = DataCatalog::getInstance().find_local("lo_extendedprice");
+        lo_discount = DataCatalog::getInstance().find_local("col_0");
+        lo_quantity = DataCatalog::getInstance().find_local("col_1");
+        lo_extendedprice = DataCatalog::getInstance().find_local("col_2");
     }
 
     size_t columnSize = lo_quantity->size;
@@ -410,7 +410,7 @@ uint64_t bench_2(const uint64_t predicate) {
         const size_t appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
         const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(1)->maxBytesInPayload(appMetaSize);
 
-        max_elems_per_chunk = maximumPayloadSize / sizeof(uint64_t) / idents.size();
+        max_elems_per_chunk = ((maximumPayloadSize / idents.size()) / (sizeof(uint64_t) * 4)) * 4;
         currentBlockSize = max_elems_per_chunk;
     } else if (!(remote && (chunked || paxed))) {
         max_elems_per_chunk = columnSize;
@@ -483,7 +483,7 @@ void doBenchmarkRemotes(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::ofstre
     std::chrono::time_point<std::chrono::high_resolution_clock> e_ts;
     std::chrono::duration<double> secs;
 
-    for (size_t i = 0; i < 1; ++i) {
+    for (size_t i = 0; i < 5; ++i) {
         reset_timer();
         DataCatalog::getInstance().fetchRemoteInfo();
         s_ts = std::chrono::high_resolution_clock::now();
@@ -498,7 +498,7 @@ void doBenchmarkRemotes(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, std::ofstre
 
         DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        for (uint64_t chunkSize = 1ull << 16; chunkSize <= 1ull << 27; chunkSize <<= 1) {
+        for (uint64_t chunkSize = 1ull << 18; chunkSize <= 1ull << 27; chunkSize <<= 1) {
             DataCatalog::getInstance().reconfigureChunkSize(chunkSize, chunkSize);
 
             reset_timer();
