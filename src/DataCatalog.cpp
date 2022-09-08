@@ -303,6 +303,46 @@ DataCatalog::DataCatalog() {
         std::cout << "NUMAQueryBench ended." << std::endl;
     };
 
+    auto benchQueriesFrontPage = [this]() -> void {
+        using namespace std::chrono_literals;
+        uint8_t num_rb = 2;
+        uint64_t bytes = 1ull << 19;
+
+        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::stringstream logNameStream;
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "FP_" << +num_rb << "_" << +bytes << "_Remote.log";
+        std::string logName = logNameStream.str();
+
+        std::cout << "[Task] Set name: " << logName << std::endl;
+
+        buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+                                        .num_own_receive_threads = num_rb,
+                                        .num_remote_send_threads = num_rb,
+                                        .num_remote_receive_threads = num_rb,
+                                        .num_own_receive = num_rb,
+                                        .size_own_receive = bytes,
+                                        .num_remote_receive = num_rb,
+                                        .size_remote_receive = bytes,
+                                        .num_own_send = num_rb,
+                                        .size_own_send = bytes,
+                                        .num_remote_send = num_rb,
+                                        .size_remote_send = bytes,
+                                        .meta_info_size = 16};
+
+        ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(2s);
+
+        std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+        std::cout << std::endl;
+
+        executeFrontPageBenchmarkingQueries(logName);
+
+        std::cout << std::endl;
+        std::cout << "QueryBench ended." << std::endl;
+    };
+
     auto benchQueriesRemoteMT = [this]() -> void {
         using namespace std::chrono_literals;
 
@@ -385,6 +425,7 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(new Task("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
     TaskManager::getInstance().registerTask(new Task("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
     TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
+    TaskManager::getInstance().registerTask(new Task("benchmarkFrontPage", "[DataCatalog] Execute Pipeline FrontPage", benchQueriesFrontPage));
     TaskManager::getInstance().registerTask(new Task("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
     TaskManager::getInstance().registerTask(new Task("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
     TaskManager::getInstance().registerTask(new Task("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
