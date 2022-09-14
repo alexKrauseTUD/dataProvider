@@ -1,8 +1,10 @@
 #pragma once
 
+#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <queue>
 #include <random>
 #include <sstream>
 #include <string>
@@ -11,13 +13,17 @@
 #include "ConnectionManager.h"
 
 enum class catalog_communication_code : uint8_t {
-    send_column_info = 0xf0,
-    receive_column_info = 0xf1,
-    fetch_column_data = 0xf2,
-    receive_column_data = 0xf3,
-    fetch_column_chunk = 0xf4,
-    receive_column_chunk = 0xf5,
-    column_chunk_complete = 0xf6
+    send_column_info = 0xA0,
+    receive_column_info,
+    fetch_column_data,
+    receive_column_data,
+    fetch_column_chunk,
+    receive_column_chunk,
+    fetch_pseudo_pax,
+    receive_pseudo_pax,
+    receive_last_pseudo_pax,
+    reconfigure_chunk_size,
+    ack_reconfigure_chunk_size
 };
 
 enum class col_data_t : unsigned char {
@@ -32,10 +38,6 @@ struct col_network_info {
     size_t size_info;
     col_data_t type_info;
     size_t received_bytes;
-    bool is_complete = false;
-
-    size_t reqeusted_chunks;
-    size_t received_chunks;
 
     col_network_info() = default;
 
@@ -48,12 +50,24 @@ struct col_network_info {
     col_network_info(const col_network_info& other) = default;
     col_network_info& operator=(const col_network_info& other) = default;
 
-    void fetchNextChunk() {
-        if ( reqeusted_chunks > received_chunks ) {
-            std::cout << "[CNI] Requesting new chunk with one inflight, ignored.";
-            return;
+    bool check_complete() const {
+        return received_bytes == sizeInBytes();
+    }
+
+    size_t sizeInBytes() const {
+        switch (type_info) {
+            case col_data_t::gen_float:
+                return size_info * sizeof(float);
+            case col_data_t::gen_double:
+                return size_info * sizeof(double);
+            case col_data_t::gen_smallint:
+                return size_info * sizeof(uint8_t);
+            case col_data_t::gen_bigint:
+                return size_info * sizeof(uint64_t);
+            default:
+                std::cout << "[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;
+                return 0;
         }
-        ++reqeusted_chunks;
     }
 
     static std::string col_data_type_to_string(col_data_t info) {
@@ -100,7 +114,6 @@ struct col_network_info {
     }
 };
 
-
 struct col_t;
 
 struct inflight_col_info_t {
@@ -108,23 +121,69 @@ struct inflight_col_info_t {
     std::size_t curr_offset;
 };
 
+struct pax_inflight_col_info_t {
+    std::vector<col_t*> cols;
+    std::queue<std::pair<size_t, size_t> > prepared_offsets;
+    std::mutex offset_lock;
+    std::thread* prepare_thread = nullptr;
+    std::condition_variable offset_cv;
+    size_t metadata_size = 0;
+    bool prepare_triggered = false;
+    bool prepare_complete = false;
+    char* metadata_buf = nullptr;
+    char* payload_buf = nullptr;
+
+    void reset() {
+        std::lock_guard<std::mutex> lk( offset_lock );
+        std::queue<std::pair<size_t, size_t> > empty;
+        prepared_offsets.swap(empty);
+        if (metadata_buf) delete metadata_buf;
+        metadata_buf = nullptr;
+        if (payload_buf) delete payload_buf;
+        payload_buf = nullptr;
+        if (prepare_thread) {
+            prepare_thread->join();
+            delete prepare_thread;
+        }
+        prepare_triggered = false;
+        prepare_complete = false;
+        metadata_size = 0;
+    }
+
+    ~pax_inflight_col_info_t() {
+        reset();
+    }
+};
+
 typedef std::unordered_map<std::string, col_t*> col_dict_t;
 typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
 typedef std::unordered_map<std::string, inflight_col_info_t> incomplete_transimssions_dict_t;
-
+typedef std::unordered_map<std::string, pax_inflight_col_info_t*> incomplete_pax_transimssions_dict_t;
 
 class DataCatalog {
    private:
     col_dict_t cols;
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
+    bool col_info_received = false;
+    bool reconfigured = false;
+    mutable std::mutex remote_info_lock;
+    mutable std::mutex reconfigure_lock;
+    mutable std::mutex appendLock;
+    mutable std::mutex inflightLock;
+    mutable std::mutex paxInflightLock;
+    std::condition_variable remote_info_available;
+    std::condition_variable reconfigure_done;
 
     incomplete_transimssions_dict_t inflight_cols;
+    incomplete_pax_transimssions_dict_t pax_inflight_cols;
 
     DataCatalog();
-    std::mutex appendLock;
 
    public:
+    uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
+    uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
+
     static DataCatalog& getInstance();
 
     DataCatalog(DataCatalog const&) = delete;
@@ -140,13 +199,17 @@ class DataCatalog {
     col_t* find_remote(std::string ident) const;
     col_t* add_remote_column(std::string name, col_network_info ni);
 
+    void remoteInfoReady();
+    void fetchRemoteInfo();
     void print_column(std::string& ident) const;
     void print_all() const;
     void print_all_remotes() const;
 
-    void eraseRemoteColumn(std::string ident);
     void eraseAllRemoteColumns();
 
+    void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);
+
     // Communication stubs
-    void fetchColStub( std::size_t conId, std::string& ident, bool whole_column = true ) const;
+    void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
+    void fetchPseudoPax(std::size_t conId, std::vector<std::string> idents) const;
 };

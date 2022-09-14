@@ -3,6 +3,7 @@
 #include <include/TaskManager.h>
 #include <include/common.h>
 #include <include/util.h>
+#include <omp.h>
 
 #include <algorithm>
 #include <iostream>
@@ -11,22 +12,16 @@
 #include "DataCatalog.h"
 
 int main() {
-    std::cout << "col_data_t size: " << sizeof(col_data_t) << std::endl;
+    std::cout << "Generating Dummy Test Data" << std::endl;
 
-    // auto worker_it = DataCatalog::getInstance().generate("worker", col_data_t::gen_smallint, 20);
-    // auto salary_it = DataCatalog::getInstance().generate("salary", col_data_t::gen_float, 5);
+    size_t lineorderSize = 200000000;
 
-    size_t lineorderSize = 20;
-
-    auto lo_orderdate = DataCatalog::getInstance().generate("lo_orderdate", col_data_t::gen_bigint, lineorderSize);
-    auto lo_discount = DataCatalog::getInstance().generate("lo_discount", col_data_t::gen_bigint, lineorderSize);
-    auto lo_quantity = DataCatalog::getInstance().generate("lo_quantity", col_data_t::gen_bigint, lineorderSize);
-    auto lo_extendedprice = DataCatalog::getInstance().generate("lo_extendedprice", col_data_t::gen_bigint, lineorderSize);
-
-    size_t dateSize = 50000;
-
-    auto d_datekey = DataCatalog::getInstance().generate("d_datekey", col_data_t::gen_bigint, dateSize);
-    auto d_year = DataCatalog::getInstance().generate("d_year", col_data_t::gen_bigint, dateSize);
+#pragma omp parallel for schedule(static, 2) num_threads(6)
+    for (size_t i = 0; i < 12; ++i) {
+        std::stringstream logNameStream;
+        logNameStream << "col_" << i;
+        DataCatalog::getInstance().generate(logNameStream.str(), col_data_t::gen_bigint, lineorderSize);
+    }
 
     DataCatalog::getInstance().print_all();
 
