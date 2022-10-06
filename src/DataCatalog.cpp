@@ -3,6 +3,7 @@
 #include <DataCatalog.h>
 #include <Queries.h>
 #include <TaskManager.h>
+#include <Utility.h>
 
 #include <thread>
 
@@ -171,7 +172,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto retrieveRemoteColsLambda = [this]() -> void {
-        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info), true);
     };
 
     auto logLambda = [this]() -> void {
@@ -260,7 +261,7 @@ DataCatalog::DataCatalog() {
                 using namespace std::chrono_literals;
                 std::this_thread::sleep_for(2s);
 
-                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
                 std::cout << std::endl;
 
                 executeRemoteBenchmarkingQueries(logName);
@@ -334,7 +335,7 @@ DataCatalog::DataCatalog() {
         using namespace std::chrono_literals;
         std::this_thread::sleep_for(2s);
 
-        std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+        std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
         std::cout << std::endl;
 
         executeFrontPageBenchmarkingQueries(logName);
@@ -374,7 +375,7 @@ DataCatalog::DataCatalog() {
                 using namespace std::chrono_literals;
                 std::this_thread::sleep_for(2s);
 
-                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << GetBytesReadable(bytes) << ")" << std::endl;
+                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
                 std::cout << std::endl;
 
                 executeRemoteMTBenchmarkingQueries(logName);
@@ -417,20 +418,20 @@ DataCatalog::DataCatalog() {
         std::cout << "NUMAQueryBench ended." << std::endl;
     };
 
-    TaskManager::getInstance().registerTask(new Task("createColumn", "[DataCatalog] Create new column", createColLambda));
-    TaskManager::getInstance().registerTask(new Task("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
-    TaskManager::getInstance().registerTask(new Task("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
-    TaskManager::getInstance().registerTask(new Task("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
-    TaskManager::getInstance().registerTask(new Task("logColumn", "[DataCatalog] Log a column to file", logLambda));
-    TaskManager::getInstance().registerTask(new Task("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
-    TaskManager::getInstance().registerTask(new Task("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
-    TaskManager::getInstance().registerTask(new Task("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
-    TaskManager::getInstance().registerTask(new Task("benchmarkFrontPage", "[DataCatalog] Execute Pipeline FrontPage", benchQueriesFrontPage));
-    TaskManager::getInstance().registerTask(new Task("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
-    TaskManager::getInstance().registerTask(new Task("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
-    TaskManager::getInstance().registerTask(new Task("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
-    TaskManager::getInstance().registerTask(new Task("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
-    TaskManager::getInstance().registerTask(new Task("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("createColumn", "[DataCatalog] Create new column", createColLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("logColumn", "[DataCatalog] Log a column to file", logLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkFrontPage", "[DataCatalog] Execute Pipeline FrontPage", benchQueriesFrontPage));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
 
     /* Message Layout
      * [ header_t | payload ]
@@ -484,7 +485,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receiveInfo = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
 
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
@@ -557,7 +558,7 @@ DataCatalog::DataCatalog() {
             };
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
-                TaskManager::getInstance().registerTask(new Task("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
+                TaskManager::getInstance().registerTask(std::make_shared<Task>("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
                 std::cout << "[DataCatalog] Registered new Task!" << std::endl;
             }
             remoteInfoReady();
@@ -575,7 +576,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_fetchCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         // char* column_data = data + head->payload_start;
 
         size_t identSz;
@@ -617,9 +618,9 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receiveCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         // Actual column data payload
         char* column_data = data + head->payload_start;
 
@@ -701,7 +702,7 @@ DataCatalog::DataCatalog() {
     // Send a chunk of a column to the requester
     CallbackFunction cb_fetchColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         // char* column_data = data + head->payload_start;
 
         size_t identSz;
@@ -782,9 +783,9 @@ DataCatalog::DataCatalog() {
     CallbackFunction cb_receiveColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // std::cout << "[DataCatalog] Received a message with a (part of a) column chnunk." << std::endl;
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         // Actual column data payload
         char* column_data = data + head->payload_start;
 
@@ -857,7 +858,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_fetchPseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         size_t* ident_lens = reinterpret_cast<size_t*>(data);
 
         // Advance data to the first ident character
@@ -1052,9 +1053,9 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receivePseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
         // Start of actual payload
         char* pax_ptr = data + head->payload_start;
 
@@ -1120,7 +1121,7 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_reconfigureChunkSize = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->buf + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
 
         uint64_t newChunkSize;
         memcpy(&newChunkSize, data, sizeof(uint64_t));
@@ -1137,7 +1138,7 @@ DataCatalog::DataCatalog() {
             dataCatalog_chunkThreshold = newChunkThreshold > 0 ? newChunkThreshold : newChunkSize;
         }
 
-        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size));
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size), true);
     };
 
     CallbackFunction cb_ackReconfigureChunkSize = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
@@ -1424,7 +1425,7 @@ void DataCatalog::remoteInfoReady() {
 void DataCatalog::fetchRemoteInfo() {
     std::unique_lock<std::mutex> lk(remote_info_lock);
     col_info_received = false;
-    ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info));
+    ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::send_column_info), true);
     // while (!col_info_received) {
     //     using namespace std::chrono_literals;
     //     if (!remote_info_available.wait_for(lk, 1s, [this] { return col_info_received; })) {

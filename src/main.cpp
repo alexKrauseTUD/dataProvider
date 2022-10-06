@@ -1,8 +1,8 @@
 #include <TaskManager.h>
+#include <Utility.h>
 #include <include/ConnectionManager.h>
 #include <include/TaskManager.h>
 #include <include/common.h>
-#include <include/util.h>
 #include <omp.h>
 
 #include <algorithm>
@@ -38,7 +38,7 @@ int main() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(500ms);
         }
-        ConnectionManager::getInstance().stop();
+        ConnectionManager::getInstance().stop(true);
         abort = true;
     };
 

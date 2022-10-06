@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <Logger.h>
 
 #include "DataCatalog.h"
 
@@ -212,6 +213,10 @@ struct col_t {
                 ss << "double"
                    << " " << size * sizeof(double) << " Bytes";
                 break;
+            }
+            default: {
+                using namespace memordma;
+                Logger::getInstance() << LogLevel::ERROR << "Saw gen_void but its not handled." << std::endl;
             }
         }
         ss << " [" << (is_remote ? "remote," : "local,") << (is_complete ? "complete" : "incomplete") << "]"
