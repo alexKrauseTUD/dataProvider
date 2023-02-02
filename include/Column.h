@@ -6,6 +6,7 @@
 #include <cstring>
 #include <mutex>
 #include <Logger.h>
+#include <numa.h>
 
 #include "DataCatalog.h"
 
@@ -87,7 +88,8 @@ struct col_t {
     std::condition_variable iterator_data_available;
 
     ~col_t() {
-        free(data);
+        // May be a problem when freeing memory not allocated with numa_alloc
+        numa_free(data, sizeInBytes);
     }
 
     template <typename T>
@@ -97,6 +99,15 @@ struct col_t {
             data = aligned_alloc(alignof(T), _size * sizeof(T));
             sizeInBytes = _size * sizeof(T);
             // std::cout << "[col_t] Allocated " << _size * sizeof(T) << " bytes." << std::endl;
+        }
+    }
+
+    template <typename T>
+    void allocate_on_numa(size_t _size, int node) {
+        if (data == nullptr) {
+            size = _size;
+            data = numa_alloc_onnode(_size * sizeof(T), node);
+            sizeInBytes = _size * sizeof(T);
         }
     }
 
@@ -141,6 +152,33 @@ struct col_t {
         }
 
         memset(reinterpret_cast<char*>(data), 0, _size);
+        current_end = data;
+    }
+
+    void allocate_on_numa(col_data_t type, size_t _size, int node) {
+        switch (type) {
+            case col_data_t::gen_smallint: {
+                allocate_on_numa<uint8_t>(_size, node);
+                break;
+            }
+            case col_data_t::gen_bigint: {
+                allocate_on_numa<uint64_t>(_size, node);
+                break;
+            }
+            case col_data_t::gen_float: {
+                allocate_on_numa<float>(_size, node);
+                break;
+            }
+            case col_data_t::gen_double: {
+                allocate_on_numa<double>(_size, node);
+                break;
+            }
+            default: {
+                std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
+            }
+        }
+
+        // memset(reinterpret_cast<char*>(data), 0, _size);
         current_end = data;
     }
 
@@ -216,7 +254,7 @@ struct col_t {
             }
             default: {
                 using namespace memordma;
-                Logger::getInstance() << LogLevel::ERROR << "Saw gen_void but its not handled." << std::endl;
+                LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
             }
         }
         ss << " [" << (is_remote ? "remote," : "local,") << (is_complete ? "complete" : "incomplete") << "]"

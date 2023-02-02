@@ -194,7 +194,7 @@ class DataCatalog {
 
     void registerCallback(uint8_t code, CallbackFunction cb) const;
 
-    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount);
+    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount, int node);
     col_t* find_local(std::string ident) const;
     col_t* find_remote(std::string ident) const;
     col_t* add_remote_column(std::string name, col_network_info ni);
