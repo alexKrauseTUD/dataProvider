@@ -43,4 +43,4 @@ target_link_libraries(memoLib ibverbs)
 include_directories(${CMAKE_SOURCE_DIR}/ext/memoRDMA ${CMAKE_SOURCE_DIR}/ext/memoRDMA/include)
 
 add_executable(disaggDataProvider ${SOURCES} ${HEADERS})
-target_link_libraries(disaggDataProvider "pthread" "memoLib" ${OpenMP_CXX_LIBRARIES})
+target_link_libraries(disaggDataProvider "pthread" "memoLib" "numa" ${OpenMP_CXX_LIBRARIES})
