@@ -1,11 +1,11 @@
 #pragma once
 
+#include <condition_variable>
 #include <functional>
 #include <list>
 #include <mutex>
 #include <thread>
 #include <utility>
-#include <condition_variable>
 
 // https://codereview.stackexchange.com/questions/122075/simple-worker-class
 class Worker {
@@ -75,19 +75,15 @@ class Worker {
     //             }
     //         }
     //     });
-    void private_start()
-    {
-        m_Thread = std::thread([this]
-        {
-            for (;;)
-            {
+    void private_start() {
+        m_Thread = std::thread([this] {
+            for (;;) {
                 decltype(m_Queue) local_queue;
                 {
                     std::unique_lock<std::mutex> lk(m_Mutex);
                     m_Condition.wait(lk, [&] { return !m_Queue.empty() + !m_Running; });
 
-                    if (!m_Running)
-                    {
+                    if (!m_Running) {
                         for (auto& func : m_Queue)
                             func();
 

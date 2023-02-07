@@ -24,7 +24,7 @@ class Benchmarks {
     }
     ~Benchmarks();
 
-    void executeAllBenchmarks(std::string& logName);
+    void executeAllBenchmarks();
 
     static const size_t OPTIMAL_BLOCK_SIZE = 65536;
 
@@ -33,8 +33,9 @@ class Benchmarks {
 
     void execLocalBenchmark(std::string& logName, std::string locality);
     void execRemoteBenchmark(std::string& logName, std::string locality);
+    void execLocalBenchmarkMW(std::string& logName, std::string locality);
+    void execRemoteBenchmarkMW(std::string& logName, std::string locality);
 
     static const size_t WORKER_NUMBER = 8;
-    static const size_t TASKS_PER_WORKER = 4;
     Worker workers[WORKER_NUMBER];
 };

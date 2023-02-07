@@ -9,10 +9,10 @@
 #include <algorithm>
 #include <iostream>
 
+#include "Benchmarks.hpp"
 #include "Column.h"
 #include "DataCatalog.h"
 #include "Worker.hpp"
-#include "Benchmarks.hpp"
 
 int main() {
     struct bitmask *mask = numa_bitmask_alloc(numa_num_possible_nodes());
@@ -22,20 +22,14 @@ int main() {
 
     std::cout << "Generating Dummy Test Data" << std::endl;
 
-    size_t dataSize = 20000000;
+    const size_t dataSize = 20000000;
+    const size_t numberLocalColumns = 18;
 
 #pragma omp parallel for schedule(static, 2) num_threads(6)
-    for (size_t i = 0; i < 12; ++i) {
+    for (size_t i = 0; i < numberLocalColumns * 2; ++i) {
         std::stringstream nameStream;
         nameStream << "col_" << i;
-        DataCatalog::getInstance().generate(nameStream.str(), col_data_t::gen_bigint, dataSize, 0);
-    }
-
-#pragma omp parallel for schedule(static, 2) num_threads(6)
-    for (size_t i = 12; i < 24; ++i) {
-        std::stringstream nameStream;
-        nameStream << "col_" << i;
-        DataCatalog::getInstance().generate(nameStream.str(), col_data_t::gen_bigint, dataSize, 1);
+        DataCatalog::getInstance().generate(nameStream.str(), col_data_t::gen_bigint, dataSize, (i < numberLocalColumns) ? 0 : 1);
     }
 
     DataCatalog::getInstance()

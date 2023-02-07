@@ -2,6 +2,8 @@
 
 #include <numa.h>
 
+#include <barrier>
+
 #include "Operators.hpp"
 
 Benchmarks::Benchmarks() {
@@ -496,7 +498,7 @@ void Benchmarks::execLocalBenchmark(std::string& logName, std::string locality) 
     if (locality == "Local") {
         idents = std::vector<std::string>{"col_0", "col_1", "col_2"};
     } else if (locality == "NUMA") {
-        idents = std::vector<std::string>{"col_12", "col_13", "col_14"};
+        idents = std::vector<std::string>{"col_18", "col_19", "col_20"};
     }
 
     uint64_t sum = 0;
@@ -540,7 +542,7 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
     if (locality == "RemoteLocal") {
         idents = std::vector<std::string>{"col_0", "col_1", "col_2"};
     } else if (locality == "RemoteNUMA") {
-        idents = std::vector<std::string>{"col_12", "col_13", "col_14"};
+        idents = std::vector<std::string>{"col_18", "col_19", "col_20"};
     }
 
     uint64_t sum = 0;
@@ -566,9 +568,9 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
             std::chrono::duration<double> secs = e_ts - s_ts;
             auto additional_time = secs.count() - (workingTime.count() + waitingTime.count());
 
-            out << locality << "\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
+            out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << locality << "\tFull\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+            std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
         }
     }
 
@@ -604,9 +606,209 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
     out.close();
 }
 
-void Benchmarks::executeAllBenchmarks(std::string& logName) {
-    execLocalBenchmark(logName, "Local");
-    execLocalBenchmark(logName, "NUMA");
-    execRemoteBenchmark(logName, "RemoteLocal");
-    execRemoteBenchmark(logName, "RemoteNUMA");
+void Benchmarks::execLocalBenchmarkMW(std::string& logName, std::string locality) {
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
+    std::cout << std::fixed << std::setprecision(7) << std::endl;
+    const std::array predicates{0, 1, 25, 50, 75, 100};
+    std::vector<std::string> idents;
+
+    if (locality == "Local") {
+        idents = std::vector<std::string>{"col_0", "col_1", "col_2"};
+    } else if (locality == "NUMA") {
+        idents = std::vector<std::string>{"col_18", "col_19", "col_20"};
+    }
+
+    Worker workers[WORKER_NUMBER];
+
+    for (auto& worker : workers) {
+        worker.start();
+    }
+
+    for (size_t i = 0; i < 10; ++i) {
+        std::barrier sync_point(WORKER_NUMBER * predicates.size() + 1);
+
+        auto do_work = [&](int predicate) {
+            if (predicate == 0) {
+                pipe_1<false, false, false, false>(predicate, idents);
+            } else {
+                pipe_2<false, false, false, false>(predicate, idents);
+            }
+            sync_point.arrive_and_drop();
+        };
+
+        std::chrono::_V2::system_clock::time_point s_ts = std::chrono::high_resolution_clock::now();
+        for (const auto predicate : predicates) {
+            for (auto& worker : workers) {
+                worker.push_task(do_work, predicate);
+            }
+        }
+
+        sync_point.arrive_and_wait();
+
+        std::chrono::_V2::system_clock::time_point e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
+            << std::flush;
+        std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+    }
+
+    for (auto& worker : workers) {
+        worker.stop();
+    }
+
+    out.close();
+}
+
+void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string locality) {
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
+    std::cout << std::fixed << std::setprecision(7) << std::endl;
+    const std::array predicates{0, 1, 25, 50, 75, 100};
+    std::vector<std::vector<std::string>> idents;
+
+    if (locality == "LocalRemoteLocal" || locality == "NUMARemoteLocal") {
+        idents = std::vector<std::vector<std::string>>{{"col_0", "col_1", "col_2"}, {"col_3", "col_4", "col_5"}, {"col_6", "col_7", "col_8"}, {"col_9", "col_10", "col_11"}, {"col_12", "col_13", "col_14"}, {"col_15", "col_16", "col_17"}};
+    } else if (locality == "LocalRemoteNUMA" || locality == "NUMARemoteNUMA") {
+        idents = std::vector<std::vector<std::string>>{{"col_18", "col_19", "col_20"}, {"col_21", "col_22", "col_23"}, {"col_24", "col_25", "col_26"}, {"col_27", "col_28", "col_29"}, {"col_30", "col_31", "col_32"}, {"col_33", "col_34", "col_35"}};
+    }
+
+    if (locality == "NUMARemoteLocal" || locality == "NUMARemoteNUMA") {
+        struct bitmask* mask = numa_bitmask_alloc(numa_num_possible_nodes());
+        numa_bitmask_setbit(mask, 1);
+        numa_run_on_node_mask(mask);
+        numa_bitmask_free(mask);
+    } else if (locality == "LocalRemoteLocal" || locality == "LocalRemoteNUMA") {
+        struct bitmask* mask = numa_bitmask_alloc(numa_num_possible_nodes());
+        numa_bitmask_setbit(mask, 0);
+        numa_run_on_node_mask(mask);
+        numa_bitmask_free(mask);
+    }
+
+    Worker workers[WORKER_NUMBER];
+
+    for (auto& worker : workers) {
+        worker.start();
+    }
+
+    for (size_t i = 0; i < 10; ++i) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        std::barrier sync_point(WORKER_NUMBER * predicates.size() + 1);
+
+        auto do_work = [&](int predicate, size_t index) {
+            if (predicate == 0) {
+                pipe_1<true, false, false, true>(predicate, idents[index]);
+            } else {
+                pipe_2<true, false, false, true>(predicate, idents[index]);
+            }
+            sync_point.arrive_and_drop();
+        };
+
+        size_t k = 0;
+        std::chrono::_V2::system_clock::time_point s_ts = std::chrono::high_resolution_clock::now();
+        for (const auto predicate : predicates) {
+            for (auto& worker : workers) {
+                worker.push_task(do_work, predicate, k);
+            }
+            ++k;
+        }
+
+        sync_point.arrive_and_wait();
+
+        std::chrono::_V2::system_clock::time_point e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
+            << std::flush;
+        std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+    }
+
+    for (uint64_t chunkSize = 1ull << 18; chunkSize <= 1ull << 27; chunkSize <<= 1) {
+        DataCatalog::getInstance().reconfigureChunkSize(chunkSize, chunkSize);
+
+        for (size_t i = 0; i < 10; ++i) {
+            DataCatalog::getInstance().eraseAllRemoteColumns();
+            DataCatalog::getInstance().fetchRemoteInfo();
+            std::barrier sync_point(WORKER_NUMBER * predicates.size() + 1);
+
+            auto do_work = [&](int predicate, size_t index) {
+                if (predicate == 1) {
+                    pipe_1<true, true, false, true>(predicate, idents[index]);
+                } else {
+                    pipe_2<true, true, false, true>(predicate, idents[index]);
+                }
+                sync_point.arrive_and_drop();
+            };
+
+            size_t k = 0;
+            std::chrono::_V2::system_clock::time_point s_ts = std::chrono::high_resolution_clock::now();
+            for (const auto predicate : predicates) {
+                for (auto& worker : workers) {
+                    worker.push_task(do_work, predicate, k);
+                }
+                ++k;
+            }
+
+            sync_point.arrive_and_wait();
+
+            std::chrono::_V2::system_clock::time_point e_ts = std::chrono::high_resolution_clock::now();
+
+            std::chrono::duration<double> secs = e_ts - s_ts;
+
+            out << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
+                << std::flush;
+            std::cout << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+        }
+    }
+
+    for (auto& worker : workers) {
+        worker.stop();
+    }
+
+    struct bitmask* mask = numa_bitmask_alloc(numa_num_possible_nodes());
+    numa_bitmask_setbit(mask, 0);
+    numa_run_on_node_mask(mask);
+    numa_bitmask_free(mask);
+
+    out.close();
+}
+
+void Benchmarks::executeAllBenchmarks() {
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStreamSW;
+    logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
+    std::string logNameSW = logNameStreamSW.str();
+
+    std::cout << "[Task] Set name: " << logNameSW << std::endl;
+
+    execLocalBenchmark(logNameSW, "Local");
+    execLocalBenchmark(logNameSW, "NUMA");
+    execRemoteBenchmark(logNameSW, "RemoteLocal");
+    execRemoteBenchmark(logNameSW, "RemoteNUMA");
+
+    std::cout << std::endl;
+    std::cout << "Single Worker (SW) Benchmarks ended." << std::endl;
+
+    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStreamMW;
+    logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
+    std::string logNameMW = logNameStreamMW.str();
+
+    std::cout << "[Task] Set name: " << logNameMW << std::endl;
+
+    execLocalBenchmarkMW(logNameMW, "Local");
+    execLocalBenchmarkMW(logNameMW, "NUMA");
+    execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
+    execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
+    execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
+    execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
+
+    std::cout << std::endl;
+    std::cout << "Multiple Worker (MW) Benchmarks ended." << std::endl;
 }

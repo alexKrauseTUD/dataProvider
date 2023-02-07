@@ -412,19 +412,7 @@ DataCatalog::DataCatalog() {
     // };
 
     auto benchmarksAllLambda = [this]() -> void {
-        using namespace std::chrono_literals;
-
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks.log";
-        std::string logName = logNameStream.str();
-
-        std::cout << "[Task] Set name: " << logName << std::endl;
-
-        Benchmarks::getInstance().executeAllBenchmarks(logName);
-
-        std::cout << std::endl;
-        std::cout << "NUMAQueryBench ended." << std::endl;
+        Benchmarks::getInstance().executeAllBenchmarks();
     };
 
     TaskManager::getInstance().registerTask(std::make_shared<Task>("createColumn", "[DataCatalog] Create new column", createColLambda));
