@@ -36,6 +36,12 @@ class Benchmarks {
     void execLocalBenchmarkMW(std::string& logName, std::string locality);
     void execRemoteBenchmarkMW(std::string& logName, std::string locality);
 
+    template <bool filter>
+    void execUPIBenchmark(std::string& logName);
+    
+    void execRDMABenchmark(std::string& logName);
+    void execRDMAHashJoinBenchmark(std::string& logName);
+
     static const size_t WORKER_NUMBER = 8;
     Worker workers[WORKER_NUMBER];
 };

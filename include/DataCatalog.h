@@ -205,6 +205,9 @@ class DataCatalog {
     void print_all() const;
     void print_all_remotes() const;
 
+    std::vector<std::string> getLocalColumnNames() const;
+    std::vector<std::string> getRemoteColumnNames() const;
+
     void eraseAllRemoteColumns();
 
     void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);

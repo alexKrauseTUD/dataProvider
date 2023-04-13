@@ -1214,7 +1214,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             break;
         }
         case col_data_t::gen_bigint: {
-            std::uniform_int_distribution<uint64_t> distribution(0, 99);
+            std::uniform_int_distribution<uint64_t> distribution(0, 100);
             tmp->datatype = col_data_t::gen_bigint;
             tmp->allocate_on_numa<uint64_t>(elemCount, node);
             auto data = reinterpret_cast<uint64_t*>(tmp->data);
@@ -1287,6 +1287,24 @@ col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
         remote_cols.insert({name, col});
         return col;
     }
+}
+
+std::vector<std::string> DataCatalog::getLocalColumnNames() const {
+    std::vector<std::string> out;
+    for (auto it : cols) {
+        out.push_back(it.first);
+    }
+
+    return out;
+}
+
+std::vector<std::string> DataCatalog::getRemoteColumnNames() const {
+    std::vector<std::string> out;
+    for (auto it : remote_cols) {
+        out.push_back(it.first);
+    }
+
+    return out;
 }
 
 void DataCatalog::print_column(std::string& ident) const {
