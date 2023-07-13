@@ -21,47 +21,9 @@ int main() {
     numa_bind(mask);
     numa_bitmask_free(mask);
 
-    std::cout << "Generating Dummy Test Data" << std::endl;
+    // DataCatalog::getInstance().print_all();
 
-    const size_t dataSize = 2000000;
-    //     const size_t dataSize = 200000000;
-    //     const size_t numberLocalColumns = 18;
-
-    // #pragma omp parallel for schedule(static, 2) num_threads(12)
-    //     for (size_t i = 0; i < numberLocalColumns * 2; ++i) {
-    //         std::stringstream nameStream;
-    //         nameStream << "col_" << i;
-    //         if (i < numberLocalColumns) {
-    //             DataCatalog::getInstance().generate(nameStream.str(), col_data_t::gen_bigint, dataSize, 0);
-    //         } else {
-    //             DataCatalog::getInstance().generate(nameStream.str(), col_data_t::gen_bigint, dataSize * 0.2, 0);
-    //         }
-    //     }
-
-    //     for (size_t i = 0; i < numberLocalColumns * 2; ++i) {
-    //         std::stringstream nameStream;
-    //         nameStream << "col_" << i;
-    //         int currnode;
-    //         col_t* column = DataCatalog::getInstance().find_local(nameStream.str());
-    //         get_mempolicy(&currnode, NULL, 0, (void *)column->data, MPOL_F_NODE | MPOL_F_ADDR);
-    //         std::cout << nameStream.str() << " is placed on numa node " << currnode << std::endl;
-    //     }
-
-#pragma omp parallel for schedule(static, 2) num_threads(8)
-    for (size_t i = 0; i < 16; ++i) {
-        std::string name = "col_" + std::to_string(i);
-
-        DataCatalog::getInstance().generate(name, col_data_t::gen_bigint, dataSize, 0);
-
-        for (size_t j = 0; j < 10; ++j) {
-            std::string sub_name = name + "_" + std::to_string(j);
-            DataCatalog::getInstance().generate(sub_name, col_data_t::gen_bigint, dataSize * 0.05, 0);
-        }
-    }
-
-    DataCatalog::getInstance()
-        .print_all();
-
+    DataCatalog::getInstance();
     Benchmarks::getInstance();
 
     config_t config = {.deviceName = "",

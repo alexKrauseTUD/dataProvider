@@ -1,8 +1,10 @@
 #include "Benchmarks.hpp"
 
 #include <numa.h>
+#include <omp.h>
 
 #include <barrier>
+#include <future>
 
 #include "Operators.hpp"
 
@@ -29,7 +31,7 @@ inline void wait_col_data_ready(col_t* _col, char* _data) {
         _col->iterator_data_available.wait(lk, [_col, _data] { return reinterpret_cast<uint64_t*>(_data) < static_cast<uint64_t*>(_col->current_end); });
     }
     waitingTime += (std::chrono::high_resolution_clock::now() - s_ts);
-};
+}
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
 inline void fetch_data(col_t* column, uint64_t* data, const bool reload) {
@@ -691,6 +693,153 @@ size_t hash_join_3(std::pair<std::string, std::string> idents) {
     return joinResult;
 }
 
+void hash_join_pg(std::shared_future<void>* ready_future, const size_t tid, const size_t local_worker_count, std::atomic<size_t>* ready_workers, std::atomic<size_t>* complete_workers, std::condition_variable* done_cv, std::mutex* done_cv_lock, bool* all_done, uint64_t* result_ptr, long* out_time, std::pair<std::string, std::vector<std::string>> idents) {
+    col_t* column_0;
+    col_t* column_1;
+    size_t joinResult = 0;
+    size_t joinCount = idents.second.size();
+    size_t chunkSize = DataCatalog::getInstance().dataCatalog_chunkMaxSize;
+    size_t currentBlockSize = chunkSize / sizeof(uint64_t);
+    size_t baseOffset = 0;
+
+    ++(*ready_workers);
+    ready_future->wait();
+    auto start = std::chrono::high_resolution_clock::now();
+
+    column_1 = DataCatalog::getInstance().find_remote(idents.second[0]);
+    column_1->request_data(false);
+
+    column_0 = DataCatalog::getInstance().find_local(idents.first);
+
+    size_t columnSize0 = column_0->size;
+    size_t columnSize1 = column_1->size;
+
+    uint64_t* data_0 = reinterpret_cast<uint64_t*>(column_0->data);
+    uint64_t* data_1 = reinterpret_cast<uint64_t*>(column_1->data);
+
+    for (size_t join_cnt = 0; join_cnt < joinCount; ++join_cnt) {
+        std::unordered_map<uint64_t, std::vector<size_t>> hashMap;
+
+        while (baseOffset < columnSize1) {
+            const size_t elem_diff = columnSize1 - baseOffset;
+            if (elem_diff < currentBlockSize) {
+                currentBlockSize = elem_diff;
+            }
+
+            wait_col_data_ready(column_1, reinterpret_cast<char*>(data_1));
+            column_1->request_data(false);
+
+            for (size_t i = 0; i < currentBlockSize; ++i) {
+                hashMap[data_1[i]].push_back(i);
+            }
+
+            baseOffset += currentBlockSize;
+            data_1 += currentBlockSize;
+        }
+
+        if (join_cnt + 1 < joinCount) {
+            column_1 = DataCatalog::getInstance().find_remote(idents.second[join_cnt + 1]);
+            column_1->request_data(false);
+            columnSize1 = column_1->size;
+            data_1 = reinterpret_cast<uint64_t*>(column_1->data);
+        }
+
+        for (size_t i = 0; i < columnSize0; ++i) {
+            auto it = hashMap.find(data_0[i]);
+            if (it != hashMap.end()) {
+                for (const auto& _ : it->second) {
+                    ++joinResult;
+                }
+            }
+        }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    out_time[tid] = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    result_ptr[tid] = joinResult;
+    if (++(*complete_workers) == local_worker_count) {
+        *all_done = true;
+        std::unique_lock<std::mutex> lk(*done_cv_lock);
+        done_cv->notify_all();
+    }
+}
+
+void hash_join_pg_alt(std::shared_future<void>* ready_future, const size_t tid, const size_t local_worker_count, std::atomic<size_t>* ready_workers, std::atomic<size_t>* complete_workers, std::condition_variable* done_cv, std::mutex* done_cv_lock, bool* all_done, uint64_t* result_ptr, long* out_time, std::pair<std::string, std::vector<std::string>> idents) {
+    col_t* column_0;
+    col_t* column_1;
+    size_t joinResult = 0;
+    size_t joinCount = idents.second.size();
+    size_t chunkSize = DataCatalog::getInstance().dataCatalog_chunkMaxSize;
+    size_t currentBlockSize = chunkSize / sizeof(uint64_t);
+    size_t baseOffset = 0;
+
+    ++(*ready_workers);
+    ready_future->wait();
+    auto start = std::chrono::high_resolution_clock::now();
+
+    column_0 = DataCatalog::getInstance().find_remote(idents.first);
+    column_0->request_data(false);
+
+    size_t columnSize0 = column_0->size;
+
+    uint64_t* data_0 = reinterpret_cast<uint64_t*>(column_0->data);
+
+    for (size_t join_cnt = 0; join_cnt < joinCount; ++join_cnt) {
+        std::unordered_map<uint64_t, std::vector<size_t>> hashMap;
+
+        column_1 = DataCatalog::getInstance().find_local(idents.second[join_cnt]);
+        size_t columnSize1 = column_1->size;
+        uint64_t* data_1 = reinterpret_cast<uint64_t*>(column_1->data);
+
+        for (size_t i = 0; i < columnSize1; ++i) {
+            hashMap[data_1[i]].push_back(i);
+        }
+
+        if (join_cnt == 0) {
+            while (baseOffset < columnSize0) {
+                const size_t elem_diff = columnSize0 - baseOffset;
+                if (elem_diff < currentBlockSize) {
+                    currentBlockSize = elem_diff;
+                }
+
+                wait_col_data_ready(column_0, reinterpret_cast<char*>(data_0));
+                column_0->request_data(false);
+
+                for (size_t i = 0; i < currentBlockSize; ++i) {
+                    auto it = hashMap.find(data_0[i]);
+                    if (it != hashMap.end()) {
+                        for (const auto& _ : it->second) {
+                            ++joinResult;
+                        }
+                    }
+                }
+
+                baseOffset += currentBlockSize;
+                data_0 += currentBlockSize;
+            }
+            data_0 = reinterpret_cast<uint64_t*>(column_0->data);
+        } else {
+            for (size_t i = 0; i < columnSize0; ++i) {
+                auto it = hashMap.find(data_0[i]);
+                if (it != hashMap.end()) {
+                    for (const auto& _ : it->second) {
+                        ++joinResult;
+                    }
+                }
+            }
+        }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    out_time[tid] = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    result_ptr[tid] = joinResult;
+    if (++(*complete_workers) == local_worker_count) {
+        *all_done = true;
+        std::unique_lock<std::mutex> lk(*done_cv_lock);
+        done_cv->notify_all();
+    }
+}
+
 void Benchmarks::execLocalBenchmark(std::string& logName, std::string locality) {
     std::ofstream out;
     out.open(logName, std::ios_base::app);
@@ -1131,7 +1280,7 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
         << std::flush;
     size_t localColumnSize = DataCatalog::getInstance().find_local(idents[0])->sizeInBytes;
     DataCatalog::getInstance().fetchRemoteInfo();
-    size_t remoteColumnSize = DataCatalog::getInstance().find_remote(idents[idents.size()/2])->sizeInBytes;
+    size_t remoteColumnSize = DataCatalog::getInstance().find_remote(idents[idents.size() / 2])->sizeInBytes;
 
     DataCatalog::getInstance().reconfigureChunkSize(4194304, 4194304);
 
@@ -1181,7 +1330,7 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
                 }
 
                 for (size_t tid = localBuffers; tid < numWorkers; ++tid) {
-                    remoteWorkers.emplace_back(std::make_unique<std::thread>(do_work_remote, idents[tid - localBuffers + idents.size()/2], tid));
+                    remoteWorkers.emplace_back(std::make_unique<std::thread>(do_work_remote, idents[tid - localBuffers + idents.size() / 2], tid));
                     if (tid < 16) {
                         CPU_ZERO(&cpuset);
                         CPU_SET(tid, &cpuset);
@@ -1335,84 +1484,243 @@ void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
     }
 }
 
-void Benchmarks::executeAllBenchmarks() {
+typedef std::function<void(std::shared_future<void>* ready_future, const size_t tid, const size_t local_worker_count, std::atomic<size_t>* ready_workers, std::atomic<size_t>* complete_workers, std::condition_variable* done_cv, std::mutex* done_cv_lock, bool* all_done, uint64_t* result_ptr, long* out_time, std::pair<std::string, std::vector<std::string>> idents)> BenchKernel;
+
+void spawn_threads(BenchKernel kernel, std::vector<size_t>& pin_list, std::vector<std::thread>& pool, std::shared_future<void>* ready_future, const size_t local_worker_count, const size_t join_cnt, std::atomic<size_t>* ready_workers, std::atomic<size_t>* complete_workers, std::condition_variable* done_cv, std::mutex* done_cv_lock, bool* all_done, uint64_t* result_ptr, long* out_time) {
+    cpu_set_t cpuset;
+    size_t buffer_counter = 0;
+    for (auto pin : pin_list) {
+        std::vector<std::string> small_tabs;
+        for (size_t j = 0; j < join_cnt; ++j) {
+            small_tabs.push_back("col_" + std::to_string(pin) + "_" + std::to_string(j));
+        }
+        std::pair<std::string, std::vector<std::string>> idents = std::make_pair("col_" + std::to_string(pin), small_tabs);
+
+        pool.emplace_back(std::thread(kernel, ready_future, pin, local_worker_count, ready_workers, complete_workers, done_cv, done_cv_lock, all_done, result_ptr, out_time, idents));
+
+        ++buffer_counter;
+
+        CPU_ZERO(&cpuset);
+        CPU_SET(pin, &cpuset);
+        int rc = pthread_setaffinity_np(pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+        if (rc != 0) {
+            std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
+                      << std::endl;
+            exit(-10);
+        }
+    }
+}
+
+void Benchmarks::execRDMAHashJoinPGBenchmark() {
+    const uint64_t numWorkers = 16;
+    const uint64_t maximalJoinCnt = 20;
+    const uint64_t localColumnElements = 16000000;
+    const uint64_t minBufferRatio = 5;
+    const uint64_t maxBufferRatio = 5;
+    const uint64_t localNumaNode = 0;
+    const uint64_t remoteNumaNode = 0;
+    const uint64_t maxRuns = 5;
+    const uint64_t experimentCode = 1;
+
+    const std::vector<size_t> global_pins = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79};
+
+    // cpu_set_t cpuset;
+    std::chrono::_V2::system_clock::time_point s_ts;
+    std::chrono::_V2::system_clock::time_point e_ts;
+
     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamSW;
-    logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
-    std::string logNameSW = logNameStreamSW.str();
+    std::stringstream logNameStream;
+    logNameStream << "results/pg_hashjoin/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMApghashjoin_" << remoteNumaNode << "_" << std::to_string(numWorkers) << "_" << std::to_string(localColumnElements * sizeof(uint64_t)) << "_" << std::to_string(experimentCode) << ".tsv";
+    std::string logName = logNameStream.str();
 
-    std::cout << "[Task] Set name: " << logNameSW << std::endl;
+    std::cout << "[Task] Set name: " << logName << std::endl;
 
-    execLocalBenchmark(logNameSW, "Local");
-    execLocalBenchmark(logNameSW, "NUMA");
-    execRemoteBenchmark(logNameSW, "RemoteLocal");
-    execRemoteBenchmark(logNameSW, "RemoteNUMA");
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7);
+    std::cout << std::fixed << std::setprecision(7) << std::endl;
+    std::vector<std::string> idents;  // = std::vector<std::string>{"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11", "col_12", "col_13", "col_14", "col_15", "col_16", "col_17", "col_18", "col_19", "col_20", "col_21", "col_22", "col_23", "col_24", "col_25", "col_26", "col_27", "col_28", "col_29", "col_30", "col_31", "col_32", "col_33", "col_34", "col_35"};
+    for (size_t i = 0; i < 16; ++i) {
+        std::string name = "col_" + std::to_string(i);
+        idents.push_back(name);
+    }
+
+    out << "local_buffer_cnt\tjoin_cnt\tbuffer_ratio\ttime[ns]\tbwdh\n"
+        << std::flush;
+
+    std::pair<BenchKernel, std::string> kernel_pair;
+
+    if (experimentCode == 0) {
+        kernel_pair = std::make_pair<BenchKernel, std::string>(hash_join_pg, "hashjoin");
+    } else {
+        kernel_pair = std::make_pair<BenchKernel, std::string>(hash_join_pg_alt, "hashjoin");
+    }
+
+    DataCatalog::getInstance().clear(true);
+
+    DataCatalog::getInstance().reconfigureChunkSize(1024 * 1024 * 4, 1024 * 1024 * 4);
+
+    for (size_t bufferRatio = minBufferRatio; bufferRatio <= maxBufferRatio; bufferRatio += 5) {
+        std::cout << " --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;
+
+        DataCatalog::getInstance().generateBenchmarkData(numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true);
+
+        const uint64_t remoteColumnElements = localColumnElements * bufferRatio * 0.01;
+        const uint64_t largerColumnSize = localColumnElements * sizeof(uint64_t);
+        const uint64_t smallerColumnSize = remoteColumnElements * sizeof(uint64_t);
+
+        for (size_t local_buffer_cnt = 1; local_buffer_cnt <= numWorkers; local_buffer_cnt += 1) {
+            for (size_t join_cnt = 1; join_cnt <= maximalJoinCnt; ++join_cnt) {
+                for (size_t runs = 0; runs < maxRuns; ++runs) {
+                    DataCatalog::getInstance().eraseAllRemoteColumns();
+                    DataCatalog::getInstance().fetchRemoteInfo();
+
+                    std::atomic<size_t> ready_workers = {0};
+                    std::atomic<size_t> complete_workers = {0};
+                    std::condition_variable done_cv;
+                    std::mutex done_cv_lock;
+                    bool all_done = false;
+
+                    std::vector<std::thread> worker_pool;
+
+                    std::promise<void> p;
+                    std::shared_future<void> ready_future(p.get_future());
+
+                    const size_t res_ptr_size = sizeof(uint64_t) * local_buffer_cnt;
+                    const size_t time_out_ptr_size = sizeof(long) * local_buffer_cnt;
+                    uint64_t* result_out_ptr = reinterpret_cast<uint64_t*>(numa_alloc_onnode(res_ptr_size, 0));
+                    long* time_out_ptr = reinterpret_cast<long*>(numa_alloc_onnode(time_out_ptr_size, 0));
+
+                    std::vector<size_t> local_pin_list;
+
+                    for (size_t i = 0; i < local_buffer_cnt; ++i) {
+                        local_pin_list.emplace_back(global_pins[i]);
+                    }
+
+                    std::cout << "---" << std::endl;
+
+                    spawn_threads(kernel_pair.first, local_pin_list, worker_pool, &ready_future, local_buffer_cnt, join_cnt, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr);
+
+                    {
+                        using namespace std::chrono_literals;
+                        while (ready_workers != local_buffer_cnt) {
+                            std::this_thread::sleep_for(1ms);
+                        }
+                    }
+
+                    auto start = std::chrono::high_resolution_clock::now();
+                    p.set_value();
+
+                    {
+                        std::unique_lock<std::mutex> lk(done_cv_lock);
+                        done_cv.wait(lk, [&all_done] { return all_done; });
+                    }
+
+                    auto end = std::chrono::high_resolution_clock::now();
+                    const size_t duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                    const double wallclock_bwdh = calculate_MiB_per_s(((largerColumnSize + smallerColumnSize) * join_cnt) * local_buffer_cnt, duration);
+
+                    std::for_each(worker_pool.begin(), worker_pool.end(), [](std::thread& t) { t.join(); });
+                    worker_pool.clear();
+
+                    numa_free(result_out_ptr, res_ptr_size);
+                    numa_free(time_out_ptr, time_out_ptr_size);
+
+                    std::cout << "Wallclock bandwidth: " << wallclock_bwdh << std::endl;
+                    out << std::to_string(local_buffer_cnt) << "\t" << std::to_string(join_cnt) << "\t" << std::to_string(bufferRatio) << "\t" << std::to_string(duration) << "\t" << wallclock_bwdh << std::endl
+                        << std::flush;
+                }
+            }
+        }
+        DataCatalog::getInstance().clear(true);
+    }
 
     std::cout << std::endl;
-    std::cout << "Single Worker (SW) Benchmarks ended." << std::endl;
+    std::cout << "RDMA Benchmark Hash Join PG ended." << std::endl;
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamMW;
-    logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
-    std::string logNameMW = logNameStreamMW.str();
+    out.close();
+}
 
-    std::cout << "[Task] Set name: " << logNameMW << std::endl;
+void Benchmarks::executeAllBenchmarks() {
+    // auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamSW;
+    // logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
+    // std::string logNameSW = logNameStreamSW.str();
 
-    execLocalBenchmarkMW(logNameMW, "Local");
-    execLocalBenchmarkMW(logNameMW, "NUMA");
-    execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
-    execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
-    execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
-    execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
+    // std::cout << "[Task] Set name: " << logNameSW << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "Multiple Worker (MW) Benchmarks ended." << std::endl;
+    // execLocalBenchmark(logNameSW, "Local");
+    // execLocalBenchmark(logNameSW, "NUMA");
+    // execRemoteBenchmark(logNameSW, "RemoteLocal");
+    // execRemoteBenchmark(logNameSW, "RemoteNUMA");
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamUPIFilter;
-    logNameStreamUPIFilter << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_filter.tsv";
-    std::string logNameUPIFilter = logNameStreamUPIFilter.str();
+    // std::cout << std::endl;
+    // std::cout << "Single Worker (SW) Benchmarks ended." << std::endl;
 
-    std::cout << "[Task] Set name: " << logNameUPIFilter << std::endl;
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamMW;
+    // logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
+    // std::string logNameMW = logNameStreamMW.str();
 
-    execUPIBenchmark<true>(logNameUPIFilter);
+    // std::cout << "[Task] Set name: " << logNameMW << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "UPI Benchmark Filter ended." << std::endl;
+    // execLocalBenchmarkMW(logNameMW, "Local");
+    // execLocalBenchmarkMW(logNameMW, "NUMA");
+    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
+    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
+    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
+    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamUPIAgg;
-    logNameStreamUPIAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_aggregate.tsv";
-    std::string logNameUPIAgg = logNameStreamUPIAgg.str();
+    // std::cout << std::endl;
+    // std::cout << "Multiple Worker (MW) Benchmarks ended." << std::endl;
 
-    std::cout << "[Task] Set name: " << logNameUPIAgg << std::endl;
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamUPIFilter;
+    // logNameStreamUPIFilter << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_filter.tsv";
+    // std::string logNameUPIFilter = logNameStreamUPIFilter.str();
 
-    execUPIBenchmark<false>(logNameUPIAgg);
+    // std::cout << "[Task] Set name: " << logNameUPIFilter << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "UPI Benchmark Aggregation ended." << std::endl;
+    // execUPIBenchmark<true>(logNameUPIFilter);
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamRDMAAgg;
-    logNameStreamRDMAAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_aggregate.tsv";
-    std::string logNameRDMAAgg = logNameStreamRDMAAgg.str();
+    // std::cout << std::endl;
+    // std::cout << "UPI Benchmark Filter ended." << std::endl;
 
-    std::cout << "[Task] Set name: " << logNameRDMAAgg << std::endl;
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamUPIAgg;
+    // logNameStreamUPIAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_aggregate.tsv";
+    // std::string logNameUPIAgg = logNameStreamUPIAgg.str();
 
-    execRDMABenchmark(logNameRDMAAgg);
+    // std::cout << "[Task] Set name: " << logNameUPIAgg << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "RDMA Benchmark Aggregation ended." << std::endl;
+    // execUPIBenchmark<false>(logNameUPIAgg);
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamRDMAHJ;
-    logNameStreamRDMAHJ << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_hashjoin.tsv";
-    std::string logNameRDMAHJ = logNameStreamRDMAHJ.str();
+    // std::cout << std::endl;
+    // std::cout << "UPI Benchmark Aggregation ended." << std::endl;
 
-    std::cout << "[Task] Set name: " << logNameRDMAHJ << std::endl;
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamRDMAAgg;
+    // logNameStreamRDMAAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_aggregate.tsv";
+    // std::string logNameRDMAAgg = logNameStreamRDMAAgg.str();
 
-    execRDMAHashJoinBenchmark(logNameRDMAHJ);
+    // std::cout << "[Task] Set name: " << logNameRDMAAgg << std::endl;
 
-    std::cout << std::endl;
-    std::cout << "RDMA Benchmark Hash Join ended." << std::endl;
+    // execRDMABenchmark(logNameRDMAAgg);
+
+    // std::cout << std::endl;
+    // std::cout << "RDMA Benchmark Aggregation ended." << std::endl;
+
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamRDMAHJ;
+    // logNameStreamRDMAHJ << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_hashjoin.tsv";
+    // std::string logNameRDMAHJ = logNameStreamRDMAHJ.str();
+
+    // std::cout << "[Task] Set name: " << logNameRDMAHJ << std::endl;
+
+    // execRDMAHashJoinBenchmark(logNameRDMAHJ);
+
+    // std::cout << std::endl;
+    // std::cout << "RDMA Benchmark Hash Join ended." << std::endl;
+
+    execRDMAHashJoinPGBenchmark();
 }

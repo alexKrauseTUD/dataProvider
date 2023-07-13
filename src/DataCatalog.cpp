@@ -482,8 +482,7 @@ DataCatalog::DataCatalog() {
      * [ columnInfoCount | [col_network_info, identLength, ident]* ]
      */
     CallbackFunction cb_receiveInfo = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
@@ -573,9 +572,7 @@ DataCatalog::DataCatalog() {
      * [ columnNameLength, columnName ]
      */
     CallbackFunction cb_fetchCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
-        // char* column_data = data + head->payload_start;
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
@@ -616,11 +613,11 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receiveCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Actual column data payload
-        char* column_data = data + head->payload_start;
+        char* column_data = rcv_buffer->getPayloadBasePtr();
 
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
@@ -700,7 +697,7 @@ DataCatalog::DataCatalog() {
     // Send a chunk of a column to the requester
     CallbackFunction cb_fetchColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
         // char* column_data = data + head->payload_start;
 
         size_t identSz;
@@ -781,11 +778,11 @@ DataCatalog::DataCatalog() {
     CallbackFunction cb_receiveColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // std::cout << "[DataCatalog] Received a message with a (part of a) column chnunk." << std::endl;
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Actual column data payload
-        char* column_data = data + head->payload_start;
+        char* column_data = rcv_buffer->getPayloadBasePtr();
 
         size_t chunk_offset;
         memcpy(&chunk_offset, data, sizeof(size_t));
@@ -856,7 +853,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_fetchPseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
         size_t* ident_lens = reinterpret_cast<size_t*>(data);
 
         // Advance data to the first ident character
@@ -1051,11 +1048,11 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receivePseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Start of actual payload
-        char* pax_ptr = data + head->payload_start;
+        char* pax_ptr = rcv_buffer->getPayloadBasePtr();
 
         size_t chunk_offset;
         memcpy(&chunk_offset, data, sizeof(size_t));
@@ -1119,7 +1116,7 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_reconfigureChunkSize = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         uint64_t newChunkSize;
         memcpy(&newChunkSize, data, sizeof(uint64_t));
@@ -1146,6 +1143,33 @@ DataCatalog::DataCatalog() {
         reconfigure_done.notify_all();
     };
 
+    CallbackFunction cb_generateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        uint64_t* data = reinterpret_cast<uint64_t*>(rcv_buffer->getPayloadBasePtr());
+
+        generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false);
+        reset_buffer();
+    };
+
+    CallbackFunction cb_ackGenerateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        std::cout << "Got Opcode for ack" << std::endl;
+        std::lock_guard<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = true;
+        data_generation_done.notify_all();
+    };
+
+    CallbackFunction cb_clearCatalog = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        DataCatalog::getInstance().clear();
+    };
+
+    CallbackFunction cb_ackClearCatalog = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        std::lock_guard<std::mutex> lk(clearCatalogLock);
+        clearCatalogDone = true;
+        clear_catalog_done.notify_all();
+    };
+
     registerCallback(static_cast<uint8_t>(catalog_communication_code::send_column_info), cb_sendInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_info), cb_receiveInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_data), cb_fetchCol);
@@ -1156,6 +1180,10 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), cb_receivePseudoPax);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), cb_reconfigureChunkSize);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size), cb_ackReconfigureChunkSize);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data), cb_generateBenchmarkData);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), cb_ackGenerateBenchmarkData);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::clear_catalog), cb_clearCatalog);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), cb_ackClearCatalog);
 }
 
 DataCatalog&
@@ -1168,7 +1196,11 @@ DataCatalog::~DataCatalog() {
     clear();
 }
 
-void DataCatalog::clear() {
+void DataCatalog::clear(bool sendRemote) {
+    if (sendRemote) {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::clear_catalog), true);
+    }
+
     for (auto it : cols) {
         delete it.second;
     }
@@ -1177,6 +1209,17 @@ void DataCatalog::clear() {
         delete it.second;
     }
     remote_cols.clear();
+
+    remote_col_info.clear();
+
+    if (sendRemote) {
+        std::unique_lock<std::mutex> lk(clearCatalogLock);
+        if (!clearCatalogDone) {
+            clear_catalog_done.wait(lk, [this] { return clearCatalogDone; });
+        }
+    } else {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), true);
+    }
 }
 
 void DataCatalog::registerCallback(uint8_t code, CallbackFunction cb) const {
@@ -1468,4 +1511,47 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
     reconfigured = false;
     ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
     reconfigure_done.wait(lk, [this] { return reconfigured; });
+}
+
+void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote) {
+    std::cout << "Generating Benchmark Data" << std::endl;
+
+    uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = false;
+        uint64_t* remInfos = reinterpret_cast<uint64_t*>(std::malloc(sizeof(uint64_t) * 6));
+        remInfos[0] = distinctLocalColumns;
+        remInfos[1] = remoteColumnsForLocal;
+        remInfos[2] = localColumnElements;
+        remInfos[3] = percentageOfRemote;
+        remInfos[4] = localNumaNode;
+        remInfos[5] = remoteNumaNode;
+
+        ConnectionManager::getInstance().sendData(1, reinterpret_cast<char*>(remInfos), sizeof(uint64_t) * 6, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
+    }
+
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+    for (size_t i = 0; i < distinctLocalColumns; ++i) {
+        std::string name = "col_" + std::to_string(i);
+
+        generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
+
+        for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+            std::string sub_name = name + "_" + std::to_string(j);
+            generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
+        }
+    }
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        if (!dataGenerationDone) {
+            data_generation_done.wait(lk, [this] { return dataGenerationDone; });
+        }
+    } else {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), true);
+    }
+
+    print_all();
 }
