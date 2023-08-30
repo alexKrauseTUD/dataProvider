@@ -448,7 +448,7 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += col.first.size();  // actual c_string
         }
         // std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
-        char* data = (char*)malloc(totalPayloadSize);
+        char* data = reinterpret_cast<char*>(numa_alloc_onnode(totalPayloadSize, 0));
         char* tmp = data;
 
         // How many columns does the receiver need to read
@@ -473,7 +473,7 @@ DataCatalog::DataCatalog() {
         ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code);
 
         // Release temporary buffer
-        free(data);
+        numa_free(reinterpret_cast<void*>(data), totalPayloadSize);
     };
 
     /* Message Layout
@@ -1145,8 +1145,9 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_generateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         uint64_t* data = reinterpret_cast<uint64_t*>(rcv_buffer->getPayloadBasePtr());
+        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data)+(sizeof(uint64_t)*6));
 
-        generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false);
+        generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false, createTables);
         reset_buffer();
     };
 
@@ -1211,6 +1212,8 @@ void DataCatalog::clear(bool sendRemote) {
     remote_cols.clear();
 
     remote_col_info.clear();
+
+    tables.clear();
 
     if (sendRemote) {
         std::unique_lock<std::mutex> lk(clearCatalogLock);
@@ -1313,6 +1316,10 @@ col_t* DataCatalog::find_remote(std::string ident) const {
     return nullptr;
 }
 
+col_t* DataCatalog::add_column(std::string ident, col_t* col) {
+    return cols.insert({ident, col}).first->second;
+}
+
 col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
     std::lock_guard<std::mutex> _lka(appendLock);
 
@@ -1403,7 +1410,7 @@ void DataCatalog::eraseAllRemoteColumns() {
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
-    char* payload = (char*)malloc(ident.size() + sizeof(size_t));
+    char* payload = reinterpret_cast<char*>(malloc(ident.size() + sizeof(size_t)));
     const size_t sz = ident.size();
     memcpy(payload, &sz, sizeof(size_t));
     memcpy(payload + sizeof(size_t), ident.c_str(), sz);
@@ -1513,34 +1520,58 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
     reconfigure_done.wait(lk, [this] { return reconfigured; });
 }
 
-void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote) {
+void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote, bool createTables) {
     std::cout << "Generating Benchmark Data" << std::endl;
 
-    uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
+    const uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
 
     if (sendToRemote) {
         std::unique_lock<std::mutex> lk(dataGenerationLock);
         dataGenerationDone = false;
-        uint64_t* remInfos = reinterpret_cast<uint64_t*>(std::malloc(sizeof(uint64_t) * 6));
-        remInfos[0] = distinctLocalColumns;
-        remInfos[1] = remoteColumnsForLocal;
-        remInfos[2] = localColumnElements;
-        remInfos[3] = percentageOfRemote;
-        remInfos[4] = localNumaNode;
-        remInfos[5] = remoteNumaNode;
+        char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) * 6 + sizeof(bool)));
+        char* tmp = remInfos;
+        std::memcpy(reinterpret_cast<void*>(tmp), &distinctLocalColumns, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnsForLocal, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localColumnElements, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &percentageOfRemote, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &createTables, sizeof(bool));
 
-        ConnectionManager::getInstance().sendData(1, reinterpret_cast<char*>(remInfos), sizeof(uint64_t) * 6, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
+        ConnectionManager::getInstance().sendData(1, remInfos, sizeof(uint64_t) * 6 + sizeof(bool), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
     }
 
+    if (createTables) {
+        std::cout << "Creating Tables" << std::endl;
 #pragma omp parallel for schedule(static, 2) num_threads(8)
-    for (size_t i = 0; i < distinctLocalColumns; ++i) {
-        std::string name = "col_" + std::to_string(i);
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "tab_" + std::to_string(i);
 
-        generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
+            DataCatalog::getInstance().tables.insert(std::make_pair(name, new table_t(name, remoteColumnsForLocal + 1, localColumnElements, 0, percentageOfRemote, true)));
 
-        for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
-            std::string sub_name = name + "_" + std::to_string(j);
-            generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                DataCatalog::getInstance().tables.insert(std::make_pair(sub_name, new table_t(sub_name, 2, remoteColumnSize, 0, percentageOfRemote, false)));
+            }
+        }
+    } else {
+        std::cout << "Creating Columns" << std::endl;
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "col_" + std::to_string(i);
+
+            generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
+
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
+            }
         }
     }
 

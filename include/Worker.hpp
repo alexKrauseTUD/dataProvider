@@ -48,33 +48,6 @@ class Worker {
     }
 
    private:
-    // void private_start() {
-    //     m_Thread = std::thread([this] {
-    //         for (;;) {
-    //             decltype(m_Queue) local_queue;
-    //             {
-    //                 std::unique_lock<std::mutex> lk(m_Mutex);
-    //                 m_Condition.wait(lk, [&] { return !m_Queue.empty() + !m_Running; });
-
-    //                 if (!m_Running) {
-    //                     for (auto& func : m_Queue)
-    //                         func();
-
-    //                     m_Queue.clear();
-    //                     return;
-    //                 }
-
-    //                 // Move to local
-    //                 local_queue = std::move(m_Queue);
-    //                 m_Queue.clear();
-    //             }
-
-    //             // Process local
-    //             for (auto& func : local_queue) {
-    //                 func();
-    //             }
-    //         }
-    //     });
     void private_start() {
         m_Thread = std::thread([this] {
             for (;;) {

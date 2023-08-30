@@ -42,6 +42,7 @@ class Benchmarks {
     void execRDMABenchmark(std::string& logName);
     void execRDMAHashJoinBenchmark(std::string& logName);
     void execRDMAHashJoinPGBenchmark();
+    void execRDMAHashJoinStarBenchmark();
 
     static const size_t WORKER_NUMBER = 8;
     Worker workers[WORKER_NUMBER];

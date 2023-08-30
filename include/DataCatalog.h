@@ -119,6 +119,7 @@ struct col_network_info {
 };
 
 struct col_t;
+struct table_t;
 
 struct inflight_col_info_t {
     col_t* col;
@@ -193,6 +194,7 @@ class DataCatalog {
    public:
     uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
     uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
+    std::map<std::string, table_t*> tables;
 
     static DataCatalog& getInstance();
 
@@ -207,6 +209,7 @@ class DataCatalog {
     col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount, int node);
     col_t* find_local(std::string ident) const;
     col_t* find_remote(std::string ident) const;
+    col_t* add_column(std::string ident, col_t* col);
     col_t* add_remote_column(std::string name, col_network_info ni);
 
     void remoteInfoReady();
@@ -222,7 +225,7 @@ class DataCatalog {
 
     void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);
 
-    void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false);
+    void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
     void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;

@@ -347,3 +347,122 @@ struct col_t {
         log.close();
     }
 };
+
+struct table_t {
+   public:
+    std::vector<col_t*> columns;
+    std::string ident;
+    size_t numCols;
+    size_t numRows;
+    size_t onNode;
+    size_t bufferRatio;
+    bool isFactTable;
+
+    explicit table_t(std::string _ident, size_t _onNode) : ident{_ident}, numCols{0}, numRows{0}, onNode{_onNode}, bufferRatio{0}, isFactTable{true} {};
+
+    table_t(std::string _ident, size_t _numCols, size_t _numRows, size_t _onNode, size_t _bufferRatio, bool _isFactTable) : ident{_ident}, numCols{_numCols}, numRows{_numRows}, onNode{_onNode}, bufferRatio{_bufferRatio}, isFactTable{_isFactTable} {
+        for (size_t i = 0; i < numCols; ++i) {
+            columns.emplace_back(new col_t);
+        }
+
+        std::default_random_engine generator;
+
+        uint8_t colId = 0;
+
+        for (auto& col : columns) {
+            col->ident = ident + "_col_" + std::to_string(colId);
+            col->size = numRows;
+            col->sizeInBytes = numRows * sizeof(uint64_t);
+
+            if (onNode != 0) {
+                col->is_remote = true;
+                col->is_complete = false;
+            } else {
+                col->is_remote = false;
+                col->is_complete = true;
+            }
+
+            col->datatype = col_data_t::gen_bigint;
+            col->data = numa_alloc_onnode(col->sizeInBytes, onNode);
+
+            auto data = reinterpret_cast<uint64_t*>(col->data);
+
+            if (colId == 0) {
+                for (size_t i = 0; i < numRows; ++i) {
+                    data[i] = i;
+                }
+            } else {
+                std::uniform_int_distribution<uint64_t> distribution;
+
+                if (isFactTable) {
+                    distribution = std::uniform_int_distribution<uint64_t>(0, (numRows * bufferRatio * 0.01) - 1);
+                } else {
+                    distribution = std::uniform_int_distribution<uint64_t>(0, 100);
+                }
+
+                for (size_t i = 0; i < numRows; ++i) {
+                    data[i] = distribution(generator);
+                }
+            }
+
+            if (col->is_complete) {
+                col->readableOffset = numRows * sizeof(uint64_t);
+            }
+
+            col->current_end = col->data;
+            DataCatalog::getInstance().add_column(col->ident, col);
+
+            ++colId;
+        }
+    }
+
+    ~table_t() {
+        for (auto col : columns) {
+            delete col;
+        }
+
+        columns.clear();
+    };
+
+    void addColumn(uint64_t* data, size_t elementCount) {
+        if (numRows == 0) {
+            numRows = elementCount;
+        } else {
+            if (numRows != elementCount) {
+                std::cerr << "Dimension of column does not match with table!" << std::endl;
+                return;
+            }
+        }
+
+        col_t* tmp = new col_t();
+
+        tmp->ident = ident + "_col_" + std::to_string(numCols);
+        tmp->size = numRows;
+        tmp->sizeInBytes = numRows * sizeof(uint64_t);
+
+        if (onNode != 0) {
+            tmp->is_remote = true;
+            tmp->is_complete = false;
+        } else {
+            tmp->is_remote = false;
+            tmp->is_complete = true;
+        }
+
+        tmp->datatype = col_data_t::gen_bigint;
+        tmp->data = numa_alloc_onnode(tmp->sizeInBytes, onNode);
+
+        std::copy(data, data + elementCount, reinterpret_cast<uint64_t*>(tmp->data));
+
+        if (tmp->is_complete) {
+            tmp->readableOffset = numRows * sizeof(uint64_t);
+        }
+
+        columns.emplace_back(tmp);
+
+        ++numCols;
+    }
+
+    col_t* getPrimaryKeyColumn() {
+        return columns[0];
+    }
+};
