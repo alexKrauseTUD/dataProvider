@@ -41,7 +41,7 @@ struct col_t {
                 (reinterpret_cast<char*>(data) == reinterpret_cast<char*>(col->current_end))  // Last readable element reached
             ) {
                 std::unique_lock<std::mutex> lk(col->iteratorLock);
-                // std::cout << "Stalling <" << (chunk_iterator ? "Chunked>" : "Full>") << std::endl;
+                LOG_DEBUG2("Stalling <" << (chunk_iterator ? "Chunked>" : "Full>") << std::endl;)
                 col->iterator_data_available.wait(lk, [this] { return reinterpret_cast<char*>(data) < reinterpret_cast<char*>(col->current_end); });
             }
         }
@@ -98,7 +98,7 @@ struct col_t {
             size = _size;
             data = aligned_alloc(alignof(T), _size * sizeof(T));
             sizeInBytes = _size * sizeof(T);
-            // std::cout << "[col_t] Allocated " << _size * sizeof(T) << " bytes." << std::endl;
+            LOG_DEBUG2("[col_t] Allocated " << _size * sizeof(T) << " bytes." << std::endl;)
         }
     }
 
@@ -147,7 +147,7 @@ struct col_t {
                 break;
             }
             default: {
-                std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
+                LOG_ERROR("[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;)
             }
         }
 
@@ -174,7 +174,7 @@ struct col_t {
                 break;
             }
             default: {
-                std::cout << "[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;
+                LOG_ERROR("[col_t] Error allocating data: Invalid datatype submitted. Nothing was allocated." << std::endl;)
             }
         }
 
@@ -185,19 +185,18 @@ struct col_t {
     void request_data(bool fetch_complete_column) {
         std::unique_lock<std::mutex> _lk(iteratorLock);
         if (is_complete || requested_chunks > received_chunks) {
-            // std::cout << "<data request ignored: " << (is_complete ? "is_complete" : "not_complete") << ">" << std::endl;
+            LOG_DEBUG2("<data request ignored: " << (is_complete ? "is_complete" : "not_complete") << ">" << std::endl;)
             // Do Nothing, ignore.
             return;
         }
         ++requested_chunks;
 
-        // std::cout << "Col is requesting a new chunk." << std::endl;
         DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column);
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
         if (data == nullptr) {
-            std::cout << "!!! Implement allocation handling in append_chunk, aborting." << std::endl;
+            LOG_WARNING("!!! Implement allocation handling in append_chunk, aborting." << std::endl;)
             return;
         }
         memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
@@ -283,22 +282,22 @@ struct col_t {
     void log_to_file(std::string logfile) const {
         switch (datatype) {
             case col_data_t::gen_smallint: {
-                std::cout << "Printing uint8_t column" << std::endl;
+                LOG_DEBUG1("Printing uint8_t column" << std::endl;)
                 log_to_file_typed<uint8_t>(logfile);
                 break;
             }
             case col_data_t::gen_bigint: {
-                std::cout << "Printing uint64_t column" << std::endl;
+                LOG_DEBUG1("Printing uint64_t column" << std::endl;)
                 log_to_file_typed<uint64_t>(logfile);
                 break;
             }
             case col_data_t::gen_float: {
-                std::cout << "Printing float column" << std::endl;
+                LOG_DEBUG1("Printing float column" << std::endl;)
                 log_to_file_typed<float>(logfile);
                 break;
             }
             case col_data_t::gen_double: {
-                std::cout << "Printing double column" << std::endl;
+                LOG_DEBUG1("Printing double column" << std::endl;)
                 log_to_file_typed<double>(logfile);
                 break;
             }
@@ -429,7 +428,7 @@ struct table_t {
             numRows = elementCount;
         } else {
             if (numRows != elementCount) {
-                std::cerr << "Dimension of column does not match with table!" << std::endl;
+                LOG_ERROR("Dimension of column does not match with table!" << std::endl;)
                 return;
             }
         }

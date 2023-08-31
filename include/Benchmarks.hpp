@@ -37,10 +37,10 @@ class Benchmarks {
     void execRemoteBenchmarkMW(std::string& logName, std::string locality);
 
     template <bool filter>
-    void execUPIBenchmark(std::string& logName);
+    void execUPIBenchmark();
     
-    void execRDMABenchmark(std::string& logName);
-    void execRDMAHashJoinBenchmark(std::string& logName);
+    void execRDMABenchmark();
+    void execRDMAHashJoinBenchmark();
     void execRDMAHashJoinPGBenchmark();
     void execRDMAHashJoinStarBenchmark();
 

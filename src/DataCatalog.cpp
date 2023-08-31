@@ -10,24 +10,24 @@
 #include "Benchmarks.hpp"
 #include "Worker.hpp"
 
+using namespace memordma;
+
 DataCatalog::DataCatalog() {
     auto createColLambda = [this]() -> void {
-        std::cout << "[DataCatalog]";
-
         std::size_t elemCnt;
         char dataType;
         std::string ident;
         std::string input;
 
-        std::cout << " Which datatype? uint8_t [s] uint64_t [l] float [f] double [d]" << std::endl;
+        LOG_CONSOLE("[DataCatalog] Which datatype? uint8_t [s] uint64_t [l] float [f] double [d]" << std::endl;)
         std::cin >> dataType;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
-        std::cout << "How many data elements?" << std::endl;
+        LOG_CONSOLE("How many data elements?" << std::endl;)
         std::cin >> elemCnt;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
-        std::cout << "Column name" << std::endl;
+        LOG_CONSOLE("Column name" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -51,7 +51,7 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "Incorrect datatype, aborting." << std::endl;
+                LOG_ERROR("Incorrect datatype, aborting." << std::endl;)
                 return;
             }
         }
@@ -60,7 +60,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto printColLambda = [this]() -> void {
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -79,28 +79,28 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
 
         auto col_it = dict.find(ident);
         if (col_it != dict.end()) {
-            std::cout << col_it->second->print_data_head() << std::endl;
+            LOG_INFO(col_it->second->print_data_head() << std::endl;)
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
     auto iteratorTestLambda = [this]() -> void {
         fetchRemoteInfo();
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -119,13 +119,13 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -140,13 +140,13 @@ DataCatalog::DataCatalog() {
                     cur_col->request_data(true);
                     auto cur_end = cur_col->end<uint64_t, false>();
                     auto it = cur_col->begin<uint64_t, false>();
-                    std::cout << "Starting..." << std::endl;
+                    LOG_DEBUG1("Starting..." << std::endl;)
                     for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
+                    LOG_SUCCESS("(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;)
+                    LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
@@ -157,19 +157,19 @@ DataCatalog::DataCatalog() {
                     cur_col->request_data(false);
                     auto cur_end = cur_col->end<uint64_t, true>();
                     auto it = cur_col->begin<uint64_t, true>();
-                    std::cout << "Starting..." << std::endl;
+                    LOG_DEBUG1("Starting..." << std::endl;)
                     for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
+                    LOG_SUCCESS("(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;)
+                    LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
             }
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
@@ -178,7 +178,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto logLambda = [this]() -> void {
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -197,13 +197,13 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -213,24 +213,24 @@ DataCatalog::DataCatalog() {
             std::string s(col_it->first + ".log");
             col_it->second->log_to_file(s);
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
-    auto pseudoPaxLambda = [this]() -> void {
-        col_t* ld = find_remote("lo_orderdate");
+    // auto pseudoPaxLambda = [this]() -> void {
+    //     col_t* ld = find_remote("lo_orderdate");
 
-        if (ld == nullptr) {
-            fetchRemoteInfo();
-        }
+    //     if (ld == nullptr) {
+    //         fetchRemoteInfo();
+    //     }
 
-        ld = find_remote("lo_orderdate");
-        col_t* lq = find_remote("lo_quantity");
-        col_t* le = find_remote("lo_extendedprice");
+    //     ld = find_remote("lo_orderdate");
+    //     col_t* lq = find_remote("lo_quantity");
+    //     col_t* le = find_remote("lo_extendedprice");
 
-        std::cout << "[DataCatalog] Fetching PseudoPAX for lo_orderdate, lo_quantity, lo_extendedprice" << std::endl;
-        fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
-    };
+    //     std::cout << "[DataCatalog] Fetching PseudoPAX for lo_orderdate, lo_quantity, lo_extendedprice" << std::endl;
+    //     fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
+    // };
 
     // auto benchQueriesRemote = [this]() -> void {
     //     using namespace std::chrono_literals;
@@ -429,7 +429,7 @@ DataCatalog::DataCatalog() {
     // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarksAll", "[DataCatalog] Execute All Benchmarks", benchmarksAllLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
 
     /* Message Layout
      * [ header_t | payload ]
@@ -438,7 +438,6 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_sendInfo = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         reset_buffer();
-        // std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = static_cast<uint8_t>(catalog_communication_code::receive_column_info);
         const size_t columnCount = cols.size();
 
@@ -447,7 +446,7 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
             totalPayloadSize += col.first.size();  // actual c_string
         }
-        // std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
+        LOG_DEBUG2("[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;)
         char* data = reinterpret_cast<char*>(numa_alloc_onnode(totalPayloadSize, 0));
         char* tmp = data;
 
@@ -525,13 +524,13 @@ DataCatalog::DataCatalog() {
              */
             auto fetchLambda = [this, conId]() -> void {
                 print_all_remotes();
-                std::cout << "[DataCatalog] Fetch data for which column?" << std::endl;
+                LOG_CONSOLE("[DataCatalog] Fetch data for which column?" << std::endl;)
                 std::string ident;
                 std::cin >> ident;
                 std::cin.clear();
                 std::cin.ignore(10000, '\n');
 
-                std::cout << "Fetch mode [1] whole column [2] (next) chunk" << std::endl;
+                LOG_CONSOLE("Fetch mode [1] whole column [2] (next) chunk" << std::endl;)
                 size_t mode;
                 std::cin >> mode;
                 std::cin.clear();
@@ -548,7 +547,7 @@ DataCatalog::DataCatalog() {
                         break;
                     }
                     default: {
-                        std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                        LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                         return;
                     }
                 }
@@ -556,7 +555,6 @@ DataCatalog::DataCatalog() {
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
                 TaskManager::getInstance().registerTask(std::make_shared<Task>("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
-                std::cout << "[DataCatalog] Registered new Task!" << std::endl;
             }
             remoteInfoReady();
         }
@@ -670,7 +668,7 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;)
                 return;
             }
         }
@@ -810,9 +808,9 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;
+                LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;)
                 for (auto k : remote_col_info) {
-                    std::cout << k.first << " " << &k.second << std::endl;
+                    LOG_WARNING(k.first << " " << &k.second << std::endl;)
                 }
                 return;
             }
@@ -1145,7 +1143,7 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_generateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         uint64_t* data = reinterpret_cast<uint64_t*>(rcv_buffer->getPayloadBasePtr());
-        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data)+(sizeof(uint64_t)*6));
+        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data) + (sizeof(uint64_t) * 6));
 
         generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false, createTables);
         reset_buffer();
@@ -1153,7 +1151,6 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_ackGenerateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         reset_buffer();
-        std::cout << "Got Opcode for ack" << std::endl;
         std::lock_guard<std::mutex> lk(dataGenerationLock);
         dataGenerationDone = true;
         data_generation_done.notify_all();
@@ -1194,10 +1191,10 @@ DataCatalog::getInstance() {
 }
 
 DataCatalog::~DataCatalog() {
-    clear();
+    clear(false, true);
 }
 
-void DataCatalog::clear(bool sendRemote) {
+void DataCatalog::clear(bool sendRemote, bool destructor) {
     if (sendRemote) {
         ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::clear_catalog), true);
     }
@@ -1215,30 +1212,29 @@ void DataCatalog::clear(bool sendRemote) {
 
     tables.clear();
 
-    if (sendRemote) {
+    if (!destructor && sendRemote) {
         std::unique_lock<std::mutex> lk(clearCatalogLock);
         if (!clearCatalogDone) {
             clear_catalog_done.wait(lk, [this] { return clearCatalogDone; });
         }
-    } else {
+    } else if (!destructor) {
         ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), true);
     }
 }
 
 void DataCatalog::registerCallback(uint8_t code, CallbackFunction cb) const {
     if (ConnectionManager::getInstance().registerCallback(code, cb)) {
-        std::cout << "[DataCatalog] Successfully added callback for code " << static_cast<uint64_t>(code) << std::endl;
+        LOG_INFO("[DataCatalog] Successfully added callback for code " << static_cast<uint64_t>(code) << std::endl;)
     } else {
-        std::cout << "[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;
+        LOG_WARNING("[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;)
     }
 }
 
 col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, size_t elemCount, int node) {
-    // std::cout << "Calling gen with type " << type << std::endl;
     auto it = cols.find(ident);
 
     if (it != cols.end()) {
-        std::cout << "Column width ident " << ident << " already present, returning old data." << std::endl;
+        LOG_INFO("Column width ident " << ident << " already present, returning old data." << std::endl;)
         return it;
     }
 
@@ -1325,10 +1321,10 @@ col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
 
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
-        // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
+        LOG_INFO("[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;)
         return it->second;
     } else {
-        // std::cout << "[DataCatalog] Creating new remote column: " << name << std::endl;
+        LOG_DEBUG1("[DataCatalog] Creating new remote column: " << name << std::endl;)
         col_t* col = new col_t();
         col->ident = name;
         col->is_remote = true;
@@ -1360,38 +1356,38 @@ std::vector<std::string> DataCatalog::getRemoteColumnNames() const {
 void DataCatalog::print_column(std::string& ident) const {
     auto it = cols.find(ident);
     if (it != cols.end()) {
-        std::cout << "[DataCatalog]" << (*it).second->print_data_head() << std::endl;
+        LOG_INFO("[DataCatalog]" << (*it).second->print_data_head() << std::endl;)
     } else {
-        std::cout << "[DataCatalog] No Entry for ident " << ident << std::endl;
+        LOG_WARNING("[DataCatalog] No Entry for ident " << ident << std::endl;)
     }
 }
 
 void DataCatalog::print_all() const {
-    std::cout << "### Local Data Catalog ###" << std::endl;
+    LOG_INFO("### Local Data Catalog ###" << std::endl;)
     if (cols.size() == 0) {
-        std::cout << "<empty>" << std::endl;
+        LOG_INFO("<empty>" << std::endl;)
     }
     for (auto it : cols) {
-        std::cout << "[" << it.first << "]: " << it.second->print_identity() << std::endl;
+        LOG_INFO("[" << it.first << "]: " << it.second->print_identity() << std::endl;)
     }
 }
 
 void DataCatalog::print_all_remotes() const {
-    std::cout << "### Remote Data Catalog ###" << std::endl;
+    LOG_INFO("### Remote Data Catalog ###" << std::endl;)
     if (remote_col_info.size() == 0) {
-        std::cout << "<empty>" << std::endl;
+        LOG_INFO("<empty>" << std::endl;)
     }
     for (auto it : remote_col_info) {
-        std::cout << "[" << it.first << "]: ";
+        LOG_INFO("[" << it.first << "]: ";)
         auto remote_col = remote_cols.find(it.first);
         if (remote_col != remote_cols.end()) {
-            std::cout << remote_col->second->print_identity();
+            LOG_INFO(remote_col->second->print_identity();)
             auto rem_info = remote_col_info.find(it.first);
-            std::cout << " (" << rem_info->second.received_bytes << " received)";
+            LOG_INFO(" (" << rem_info->second.received_bytes << " received)";)
         } else {
-            std::cout << it.second.print_identity() << " [nothing local]";
+            LOG_INFO(it.second.print_identity() << " [nothing local]";)
         }
-        std::cout << std::endl;
+        LOG_INFO(std::endl;)
     }
 }
 
@@ -1505,7 +1501,7 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
     using namespace std::chrono_literals;
 
     if (newChunkSize == 0 || newChunkThreshold == 0) {
-        std::cout << "Either the new Chunk Size or the new Chunk Threshold was 0!" << std::endl;
+        LOG_WARNING("Either the new Chunk Size or the new Chunk Threshold was 0!" << std::endl;)
         return;
     }
 
@@ -1521,7 +1517,7 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
 }
 
 void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote, bool createTables) {
-    std::cout << "Generating Benchmark Data" << std::endl;
+    LOG_DEBUG1("Generating Benchmark Data" << std::endl;)
 
     const uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
 
@@ -1548,7 +1544,7 @@ void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, con
     }
 
     if (createTables) {
-        std::cout << "Creating Tables" << std::endl;
+        LOG_DEBUG1("Creating Tables" << std::endl;)
 #pragma omp parallel for schedule(static, 2) num_threads(8)
         for (size_t i = 0; i < distinctLocalColumns; ++i) {
             std::string name = "tab_" + std::to_string(i);
@@ -1561,7 +1557,7 @@ void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, con
             }
         }
     } else {
-        std::cout << "Creating Columns" << std::endl;
+        LOG_DEBUG1("Creating Columns" << std::endl;)
 #pragma omp parallel for schedule(static, 2) num_threads(8)
         for (size_t i = 0; i < distinctLocalColumns; ++i) {
             std::string name = "col_" + std::to_string(i);

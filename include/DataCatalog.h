@@ -69,7 +69,7 @@ struct col_network_info {
             case col_data_t::gen_bigint:
                 return size_info * sizeof(uint64_t);
             default:
-                std::cout << "[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;
+                LOG_WARNING("[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;)
                 return 0;
         }
     }
@@ -202,7 +202,7 @@ class DataCatalog {
     void operator=(DataCatalog const&) = delete;
     ~DataCatalog();
 
-    void clear(bool sendRemot = false);
+    void clear(bool sendRemot = false, bool destructor = false);
 
     void registerCallback(uint8_t code, CallbackFunction cb) const;
 

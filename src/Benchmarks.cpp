@@ -1000,7 +1000,6 @@ void Benchmarks::execLocalBenchmark(std::string& logName, std::string locality) 
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     const std::array predicates{0, 1, 25, 50, 75, 100};
     std::vector<std::string> idents;
 
@@ -1033,7 +1032,7 @@ void Benchmarks::execLocalBenchmark(std::string& logName, std::string locality) 
 
             out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+            LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;)
         }
     }
 
@@ -1044,7 +1043,6 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     const std::array predicates{0, 1, 25, 50, 75, 100};
     std::vector<std::string> idents;
 
@@ -1079,7 +1077,7 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
 
             out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+            LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;)
         }
     }
 
@@ -1107,7 +1105,7 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
 
                 out << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << std::endl
                     << std::flush;
-                std::cout << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << +predicate << "\t" << sum << "\t" << waitingTime.count() << "\t" << workingTime.count() << "\t" << secs.count() << "\t" << additional_time << std::endl;)
             }
         }
     }
@@ -1119,7 +1117,6 @@ void Benchmarks::execLocalBenchmarkMW(std::string& logName, std::string locality
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     const std::array predicates{0, 1, 25, 50, 75, 100};
     std::vector<std::string> idents;
 
@@ -1162,7 +1159,7 @@ void Benchmarks::execLocalBenchmarkMW(std::string& logName, std::string locality
 
         out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
             << std::flush;
-        std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;)
     }
 
     for (auto& worker : workers) {
@@ -1176,7 +1173,6 @@ void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string localit
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     const std::array predicates{0, 1, 25, 50, 75, 100};
     std::vector<std::vector<std::string>> idents;
 
@@ -1235,7 +1231,7 @@ void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string localit
 
         out << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
             << std::flush;
-        std::cout << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tFull\tPipe\t" << OPTIMAL_BLOCK_SIZE << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;)
     }
 
     for (uint64_t chunkSize = 1ull << 18; chunkSize <= 1ull << 27; chunkSize <<= 1) {
@@ -1272,7 +1268,7 @@ void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string localit
 
             out << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl
                 << std::flush;
-            std::cout << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;
+            LOG_SUCCESS(std::fixed << std::setprecision(7) << locality << "\tChunked\tPipe\t" << +DataCatalog::getInstance().dataCatalog_chunkMaxSize << "\t" << WORKER_NUMBER << "\t" << predicates.size() << "\t" << secs.count() << std::endl;)
         }
     }
 
@@ -1303,13 +1299,23 @@ double get_bandwidth(const size_t numBuffers, const size_t buffer_size_in_bytes,
 }
 
 template <bool filter>
-void Benchmarks::execUPIBenchmark(std::string& logName) {
+void Benchmarks::execUPIBenchmark() {
     cpu_set_t cpuset;
+
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    if (filter) {
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_filter.tsv";
+    } else {
+        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_aggregate.tsv";
+    }
+    std::string logName = logNameStream.str();
+
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     std::vector<std::string> idents;  // = std::vector<std::string>{"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11", "col_12", "col_13", "col_14", "col_15", "col_16", "col_17", "col_18", "col_19", "col_20", "col_21", "col_22", "col_23", "col_24", "col_25", "col_26", "col_27", "col_28", "col_29", "col_30", "col_31", "col_32", "col_33", "col_34", "col_35"};
     for (size_t i = 0; i < 36; ++i) {
         std::stringstream nameStream;
@@ -1342,7 +1348,6 @@ void Benchmarks::execUPIBenchmark(std::string& logName) {
                 std::vector<std::unique_ptr<std::thread>> remoteWorkers;
 
                 auto do_work = [&](std::string ident, size_t index) {
-                    // std::cout << "Working on " << ident << std::endl;
                     sync_point_1.arrive_and_wait();
                     // auto s_ts = std::chrono::high_resolution_clock::now();
                     if (filter) {
@@ -1360,8 +1365,7 @@ void Benchmarks::execUPIBenchmark(std::string& logName) {
                     CPU_SET(tid, &cpuset);
                     int rc = pthread_setaffinity_np(localWorkers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
                     if (rc != 0) {
-                        std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                                  << std::endl;
+                        LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
                         exit(-10);
                     }
                 }
@@ -1377,8 +1381,7 @@ void Benchmarks::execUPIBenchmark(std::string& logName) {
                     }
                     int rc = pthread_setaffinity_np(remoteWorkers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
                     if (rc != 0) {
-                        std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                                  << std::endl;
+                        LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
                         exit(-10);
                     }
                 }
@@ -1398,10 +1401,10 @@ void Benchmarks::execUPIBenchmark(std::string& logName) {
                 local_bwdh += (localBuffers == 0) ? 0 : get_bandwidth(localBuffers, localColumnSize, time_out_ptr, 0);
                 remote_bwdh += (remoteBuffers == 0) ? 0 : get_bandwidth(remoteBuffers, remoteColumnSize, time_out_ptr, localBuffers);
 
-                std::cout << "Local:\t" << localBuffers << "\tRemote:\t" << remoteBuffers << std::endl;
-                std::cout << "Local aggregated bandwidth: " << local_bwdh << std::endl;
-                std::cout << "Remote aggregated bandwidth: " << remote_bwdh << std::endl;
-                std::cout << "Wallclock bandwidth: " << wallclock << std::endl;
+                LOG_INFO("Local:\t" << localBuffers << "\tRemote:\t" << remoteBuffers << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Local aggregated bandwidth: " << local_bwdh << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Remote aggregated bandwidth: " << remote_bwdh << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock << std::endl;)
                 out << localBuffers << "\t" << remoteBuffers << "\t" << localColumnSize << "\t" << remoteColumnSize << "\t" << local_bwdh << "\t" << remote_bwdh << "\t" << wallclock << std::endl
                     << std::flush;
 
@@ -1414,15 +1417,29 @@ void Benchmarks::execUPIBenchmark(std::string& logName) {
             }
         }
     }
+    LOG_NOFORMAT(std::endl;)
+    if (filter) {
+        LOG_INFO("UPI Benchmark Filter ended." << std::endl;)
+    } else {
+        LOG_INFO("UPI Benchmark Aggregation ended." << std::endl;)
+    }
+
+    out.close();
 }
 
-void Benchmarks::execRDMABenchmark(std::string& logName) {
+void Benchmarks::execRDMABenchmark() {
     cpu_set_t cpuset;
+
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_aggregate.tsv";
+    std::string logName = logNameStream.str();
+
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     std::vector<std::string> idents;  // = std::vector<std::string>{"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11", "col_12", "col_13", "col_14", "col_15", "col_16", "col_17", "col_18", "col_19", "col_20", "col_21", "col_22", "col_23", "col_24", "col_25", "col_26", "col_27", "col_28", "col_29", "col_30", "col_31", "col_32", "col_33", "col_34", "col_35"};
     for (size_t i = 0; i < 36; ++i) {
         std::stringstream nameStream;
@@ -1479,8 +1496,7 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
                     CPU_SET(tid, &cpuset);
                     int rc = pthread_setaffinity_np(localWorkers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
                     if (rc != 0) {
-                        std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                                  << std::endl;
+                        LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
                         exit(-10);
                     }
                 }
@@ -1496,8 +1512,7 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
                     }
                     int rc = pthread_setaffinity_np(remoteWorkers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
                     if (rc != 0) {
-                        std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                                  << std::endl;
+                        LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
                         exit(-10);
                     }
                 }
@@ -1517,10 +1532,10 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
                 local_bwdh += (localBuffers == 0) ? 0 : get_bandwidth(localBuffers, localColumnSize, time_out_ptr, 0);
                 remote_bwdh += (remoteBuffers == 0) ? 0 : get_bandwidth(remoteBuffers, remoteColumnSize, time_out_ptr, localBuffers);
 
-                std::cout << "Local:\t" << localBuffers << "\tRemote:\t" << remoteBuffers << std::endl;
-                std::cout << "Local per core bandwidth: " << local_bwdh << std::endl;
-                std::cout << "Remote per core bandwidth: " << remote_bwdh << std::endl;
-                std::cout << "Wallclock bandwidth: " << wallclock << std::endl;
+                LOG_INFO("Local:\t" << localBuffers << "\tRemote:\t" << remoteBuffers << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Local per core bandwidth: " << local_bwdh << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Remote per core bandwidth: " << remote_bwdh << std::endl;)
+                LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock << std::endl;)
                 out << localBuffers << "\t" << remoteBuffers << "\t" << localColumnSize << "\t" << remoteColumnSize << "\t" << local_bwdh << "\t" << remote_bwdh << "\t" << wallclock << std::endl
                     << std::flush;
 
@@ -1535,15 +1550,26 @@ void Benchmarks::execRDMABenchmark(std::string& logName) {
             }
         }
     }
+
+    LOG_NOFORMAT(std::endl;)
+    LOG_INFO("RDMA Benchmark Aggregation ended." << std::endl;)
+
+    out.close();
 }
 
-void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
+void Benchmarks::execRDMAHashJoinBenchmark() {
     cpu_set_t cpuset;
+
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_hashjoin.tsv";
+    std::string logName = logNameStream.str();
+
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
     std::ofstream out;
     out.open(logName, std::ios_base::app);
     out << std::fixed << std::setprecision(7) << std::endl;
-    std::cout << std::fixed << std::setprecision(7) << std::endl;
     std::vector<std::string> idents;  // = std::vector<std::string>{"col_0", "col_1", "col_2", "col_3", "col_4", "col_5", "col_6", "col_7", "col_8", "col_9", "col_10", "col_11", "col_12", "col_13", "col_14", "col_15", "col_16", "col_17", "col_18", "col_19", "col_20", "col_21", "col_22", "col_23", "col_24", "col_25", "col_26", "col_27", "col_28", "col_29", "col_30", "col_31", "col_32", "col_33", "col_34", "col_35"};
     for (size_t i = 0; i < 16; ++i) {
         std::string name = "col_" + std::to_string(i);
@@ -1592,7 +1618,6 @@ void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
                             res += func(std::make_pair(sub_id, ident));
                         }
                         sync_point_2.arrive_and_wait();
-                        // std::cout << res.size() << std::endl;
                     };
 
                     for (size_t tid = 0; tid < bufferCount; ++tid) {
@@ -1601,8 +1626,7 @@ void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
                         CPU_SET(tid, &cpuset);
                         int rc = pthread_setaffinity_np(workers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
                         if (rc != 0) {
-                            std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                                      << std::endl;
+                            LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
                             exit(-10);
                         }
                     }
@@ -1621,10 +1645,10 @@ void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
 
                     bwdh = calculate_MiB_per_s((largerColumnSize + (smallerColumnSize * remote_buffer_count)) * bufferCount, duration);
 
-                    std::cout << "Mode: " << func_indicator << std::endl;
-                    std::cout << "Buffer Count: " << bufferCount << std::endl;
-                    std::cout << "Join Count: " << remote_buffer_count << std::endl;
-                    std::cout << "Bandwidth: " << bwdh << std::endl;
+                    LOG_INFO("Mode: " << func_indicator << std::endl;)
+                    LOG_INFO("Buffer Count: " << bufferCount << std::endl;)
+                    LOG_INFO("Join Count: " << remote_buffer_count << std::endl;)
+                    LOG_SUCCESS(std::fixed << std::setprecision(7) << "Bandwidth: " << bwdh << std::endl;)
                     out << func_indicator << "\t" << bufferCount << "\t" << remote_buffer_count << "\t" << largerColumnSize << "\t" << smallerColumnSize << "\t" << duration << "\t" << bwdh << std::endl
                         << std::flush;
 
@@ -1638,6 +1662,11 @@ void Benchmarks::execRDMAHashJoinBenchmark(std::string& logName) {
             }
         }
     }
+
+    LOG_INFO(std::endl;)
+    LOG_INFO("RDMA Benchmark Hash Join ended." << std::endl;)
+
+    out.close();
 }
 
 typedef std::function<void(std::shared_future<void>* ready_future, const size_t tid, const size_t local_worker_count, std::atomic<size_t>* ready_workers, std::atomic<size_t>* complete_workers, std::condition_variable* done_cv, std::mutex* done_cv_lock, bool* all_done, uint64_t* result_ptr, long* out_time, std::pair<std::string, std::vector<std::string>> idents)> BenchKernel;
@@ -1659,8 +1688,7 @@ void spawn_threads(BenchKernel kernel, std::vector<size_t>& pin_list, std::vecto
         CPU_SET(pin, &cpuset);
         int rc = pthread_setaffinity_np(pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
         if (rc != 0) {
-            std::cerr << "Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl
-                      << std::endl;
+            LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
             exit(-10);
         }
     }
@@ -1687,12 +1715,11 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
         logNameStream << "results/pg_hashjoin/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMApghashjoin_" << remoteNumaNode << "_" << std::to_string(numWorkers) << "_" << std::to_string(localColumnElements * sizeof(uint64_t)) << "_" << std::to_string(experimentCode) << ".tsv";
         std::string logName = logNameStream.str();
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+        LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
         std::ofstream out;
         out.open(logName, std::ios_base::app);
         out << std::fixed << std::setprecision(7);
-        std::cout << std::fixed << std::setprecision(7) << std::endl;
 
         out << "local_buffer_cnt\tjoin_cnt\tbuffer_ratio\ttime[ns]\tbwdh\n"
             << std::flush;
@@ -1710,7 +1737,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
         DataCatalog::getInstance().reconfigureChunkSize(1024 * 1024 * 4, 1024 * 1024 * 4);
 
         for (size_t bufferRatio = minBufferRatio; bufferRatio <= maxBufferRatio; bufferRatio += 5) {
-            std::cout << " --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;
+            LOG_INFO(" --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;)
 
             DataCatalog::getInstance().generateBenchmarkData(numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, false);
 
@@ -1747,7 +1774,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
                             local_pin_list.emplace_back(global_pins[i]);
                         }
 
-                        std::cout << "---" << std::endl;
+                        LOG_INFO("---" << std::endl;)
 
                         spawn_threads(kernel_pair.first, local_pin_list, worker_pool, &ready_future, local_buffer_cnt, join_cnt, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "col_");
 
@@ -1776,8 +1803,8 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
                         numa_free(result_out_ptr, res_ptr_size);
                         numa_free(time_out_ptr, time_out_ptr_size);
 
-                        std::cout << "Wallclock bandwidth: " << wallclock_bwdh << std::endl;
-                        std::cout << "Waiting time total: " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() << "\tWaiting per thread " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() / local_buffer_cnt << std::endl;
+                        LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock_bwdh << std::endl;)
+                        LOG_SUCCESS(std::fixed << std::setprecision(7) << "Waiting time total: " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() << "\tWaiting per thread " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() / local_buffer_cnt << std::endl;)
                         out << std::to_string(local_buffer_cnt) << "\t" << std::to_string(join_cnt) << "\t" << std::to_string(bufferRatio) << "\t" << std::to_string(duration) << "\t" << wallclock_bwdh << std::endl
                             << std::flush;
                     }
@@ -1786,8 +1813,8 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
             DataCatalog::getInstance().clear(true);
         }
 
-        std::cout << std::endl;
-        std::cout << "RDMA Benchmark Hash Join PG ended." << std::endl;
+        LOG_NOFORMAT(std::endl;)
+        LOG_INFO("RDMA Benchmark Hash Join PG ended." << std::endl;)
 
         out.close();
     }
@@ -1814,13 +1841,11 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
         logNameStream << "results/star/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMAstar_" << remoteNumaNode << "_" << std::to_string(numWorkers) << "_" << std::to_string(localColumnElements * sizeof(uint64_t)) << "_" << std::to_string(experimentCode) << ".tsv";
         std::string logName = logNameStream.str();
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+        LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
         std::ofstream out;
         out.open(logName, std::ios_base::app);
         out << std::fixed << std::setprecision(7);
-        std::cout << std::fixed << std::setprecision(7) << std::endl;
-
         out << "local_buffer_cnt\tjoin_cnt\tbuffer_ratio\ttime[ns]\tbwdh\n"
             << std::flush;
 
@@ -1837,7 +1862,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
         DataCatalog::getInstance().reconfigureChunkSize(1024 * 1024 * 4, 1024 * 1024 * 4);
 
         for (size_t bufferRatio = minBufferRatio; bufferRatio <= maxBufferRatio; bufferRatio += 5) {
-            std::cout << " --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;
+            LOG_INFO(" --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;)
 
             DataCatalog::getInstance().generateBenchmarkData(numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, true);
 
@@ -1873,7 +1898,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
                             local_pin_list.emplace_back(global_pins[i]);
                         }
 
-                        std::cout << "---" << std::endl;
+                        LOG_INFO("---" << std::endl;)
 
                         spawn_threads(kernel_pair.first, local_pin_list, worker_pool, &ready_future, local_buffer_cnt, join_cnt, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "tab_");
 
@@ -1902,7 +1927,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
                         numa_free(result_out_ptr, res_ptr_size);
                         numa_free(time_out_ptr, time_out_ptr_size);
 
-                        std::cout << "Wallclock bandwidth: " << wallclock_bwdh << std::endl;
+                        LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock_bwdh << std::endl;)
                         out << std::to_string(local_buffer_cnt) << "\t" << std::to_string(join_cnt) << "\t" << std::to_string(bufferRatio) << "\t" << std::to_string(duration) << "\t" << wallclock_bwdh << std::endl
                             << std::flush;
                     }
@@ -1910,8 +1935,8 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
             }
             DataCatalog::getInstance().clear(true);
         }
-        std::cout << std::endl;
-        std::cout << "RDMA Benchmark Hash Join Star ended." << std::endl;
+        LOG_NOFORMAT(std::endl;)
+        LOG_INFO("RDMA Benchmark Hash Join Star ended." << std::endl;)
 
         out.close();
     }
@@ -1923,22 +1948,22 @@ void Benchmarks::executeAllBenchmarks() {
     // logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
     // std::string logNameSW = logNameStreamSW.str();
 
-    // std::cout << "[Task] Set name: " << logNameSW << std::endl;
+    // LOG_INFO("[Task] Set name: " << logNameSW << std::endl;)
 
     // execLocalBenchmark(logNameSW, "Local");
     // execLocalBenchmark(logNameSW, "NUMA");
     // execRemoteBenchmark(logNameSW, "RemoteLocal");
     // execRemoteBenchmark(logNameSW, "RemoteNUMA");
 
-    // std::cout << std::endl;
-    // std::cout << "Single Worker (SW) Benchmarks ended." << std::endl;
+    // LOG_NOFORMAT(std::endl;)
+    // LOG_INFO("Single Worker (SW) Benchmarks ended." << std::endl;)
 
     // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     // std::stringstream logNameStreamMW;
     // logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
     // std::string logNameMW = logNameStreamMW.str();
 
-    // std::cout << "[Task] Set name: " << logNameMW << std::endl;
+    // LOG_INFO("[Task] Set name: " << logNameMW << std::endl;)
 
     // execLocalBenchmarkMW(logNameMW, "Local");
     // execLocalBenchmarkMW(logNameMW, "NUMA");
@@ -1947,56 +1972,15 @@ void Benchmarks::executeAllBenchmarks() {
     // execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
     // execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
 
-    // std::cout << std::endl;
-    // std::cout << "Multiple Worker (MW) Benchmarks ended." << std::endl;
+    // LOG_NOFORMAT(std::endl;)
+    // LOG_INFO("Multiple Worker (MW) Benchmarks ended." << std::endl;)
 
-    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamUPIFilter;
-    // logNameStreamUPIFilter << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_filter.tsv";
-    // std::string logNameUPIFilter = logNameStreamUPIFilter.str();
+    // execUPIBenchmark<true>();
+    // execUPIBenchmark<false>();
 
-    // std::cout << "[Task] Set name: " << logNameUPIFilter << std::endl;
+    // execRDMABenchmark();
 
-    // execUPIBenchmark<true>(logNameUPIFilter);
-
-    // std::cout << std::endl;
-    // std::cout << "UPI Benchmark Filter ended." << std::endl;
-
-    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamUPIAgg;
-    // logNameStreamUPIAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "UPIBenchmark_aggregate.tsv";
-    // std::string logNameUPIAgg = logNameStreamUPIAgg.str();
-
-    // std::cout << "[Task] Set name: " << logNameUPIAgg << std::endl;
-
-    // execUPIBenchmark<false>(logNameUPIAgg);
-
-    // std::cout << std::endl;
-    // std::cout << "UPI Benchmark Aggregation ended." << std::endl;
-
-    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamRDMAAgg;
-    // logNameStreamRDMAAgg << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_aggregate.tsv";
-    // std::string logNameRDMAAgg = logNameStreamRDMAAgg.str();
-
-    // std::cout << "[Task] Set name: " << logNameRDMAAgg << std::endl;
-
-    // execRDMABenchmark(logNameRDMAAgg);
-
-    // std::cout << std::endl;
-    // std::cout << "RDMA Benchmark Aggregation ended." << std::endl;
-
-    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamRDMAHJ;
-    // logNameStreamRDMAHJ << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "RDMABenchmark_hashjoin.tsv";
-    // std::string logNameRDMAHJ = logNameStreamRDMAHJ.str();
-
-    // std::cout << "[Task] Set name: " << logNameRDMAHJ << std::endl;
-
-    // execRDMAHashJoinBenchmark(logNameRDMAHJ);
-
-    // std::cout << std::endl;
-    // std::cout << "RDMA Benchmark Hash Join ended." << std::endl;
+    // execRDMAHashJoinBenchmark();
 
     execRDMAHashJoinPGBenchmark();
     // execRDMAHashJoinStarBenchmark();
