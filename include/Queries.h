@@ -1,5 +1,4 @@
-#ifndef QUERIES_H
-#define QUERIES_H
+#pragma once
 
 #include <chrono>
 #include <cstdint>
@@ -19,5 +18,3 @@ void executeFrontPageBenchmarkingQueries(std::string& logName);
 
 void executeLocalMTBenchmarkingQueries(std::string& logName, std::string locality);
 void executeRemoteMTBenchmarkingQueries(std::string& logName);
-
-#endif

@@ -7,25 +7,27 @@
 
 #include <thread>
 
+#include "Benchmarks.hpp"
+#include "Worker.hpp"
+
+using namespace memordma;
+
 DataCatalog::DataCatalog() {
     auto createColLambda = [this]() -> void {
-        std::cout << "[DataCatalog]";
-
         std::size_t elemCnt;
         char dataType;
         std::string ident;
-        bool correct;
         std::string input;
 
-        std::cout << " Which datatype? uint8_t [s] uint64_t [l] float [f] double [d]" << std::endl;
+        LOG_CONSOLE("[DataCatalog] Which datatype? uint8_t [s] uint64_t [l] float [f] double [d]" << std::endl;)
         std::cin >> dataType;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
-        std::cout << "How many data elements?" << std::endl;
+        LOG_CONSOLE("How many data elements?" << std::endl;)
         std::cin >> elemCnt;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
-        std::cout << "Column name" << std::endl;
+        LOG_CONSOLE("Column name" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -49,16 +51,16 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "Incorrect datatype, aborting." << std::endl;
+                LOG_ERROR("Incorrect datatype, aborting." << std::endl;)
                 return;
             }
         }
 
-        this->generate(ident, type, elemCnt);
+        this->generate(ident, type, elemCnt, 0);
     };
 
     auto printColLambda = [this]() -> void {
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -77,28 +79,28 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
 
         auto col_it = dict.find(ident);
         if (col_it != dict.end()) {
-            std::cout << col_it->second->print_data_head() << std::endl;
+            LOG_INFO(col_it->second->print_data_head() << std::endl;)
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
     auto iteratorTestLambda = [this]() -> void {
         fetchRemoteInfo();
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -117,13 +119,13 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -138,13 +140,13 @@ DataCatalog::DataCatalog() {
                     cur_col->request_data(true);
                     auto cur_end = cur_col->end<uint64_t, false>();
                     auto it = cur_col->begin<uint64_t, false>();
-                    std::cout << "Starting..." << std::endl;
+                    LOG_DEBUG1("Starting..." << std::endl;)
                     for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
+                    LOG_SUCCESS("(Full) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;)
+                    LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
@@ -155,19 +157,19 @@ DataCatalog::DataCatalog() {
                     cur_col->request_data(false);
                     auto cur_end = cur_col->end<uint64_t, true>();
                     auto it = cur_col->begin<uint64_t, true>();
-                    std::cout << "Starting..." << std::endl;
+                    LOG_DEBUG1("Starting..." << std::endl;)
                     for (; it != cur_end; ++it) {
                         count += *it;
                     }
                     auto t_end = std::chrono::high_resolution_clock::now();
-                    std::cout << "(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;
-                    std::cout << "\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;
+                    LOG_SUCCESS("(Chunked) I found " << count << " CS (" << cur_col->calc_checksum() << ") in " << static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 << "ms" << std::endl;)
+                    LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
                 fetchRemoteInfo();
             }
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
@@ -176,7 +178,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto logLambda = [this]() -> void {
-        std::cout << "Print info for [1] local [2] remote" << std::endl;
+        LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
         std::cin.clear();
@@ -195,13 +197,13 @@ DataCatalog::DataCatalog() {
                 break;
             }
             default: {
-                std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                 return;
             }
         }
 
         std::string ident;
-        std::cout << "Which column?" << std::endl;
+        LOG_CONSOLE("Which column?" << std::endl;)
         std::cin >> ident;
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -211,211 +213,206 @@ DataCatalog::DataCatalog() {
             std::string s(col_it->first + ".log");
             col_it->second->log_to_file(s);
         } else {
-            std::cout << "[DataCatalog] Invalid column name." << std::endl;
+            LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
         }
     };
 
-    auto pseudoPaxLambda = [this]() -> void {
-        col_t* ld = find_remote("lo_orderdate");
+    // auto pseudoPaxLambda = [this]() -> void {
+    //     col_t* ld = find_remote("lo_orderdate");
 
-        if (ld == nullptr) {
-            fetchRemoteInfo();
-        }
+    //     if (ld == nullptr) {
+    //         fetchRemoteInfo();
+    //     }
 
-        ld = find_remote("lo_orderdate");
-        col_t* lq = find_remote("lo_quantity");
-        col_t* le = find_remote("lo_extendedprice");
+    //     ld = find_remote("lo_orderdate");
+    //     col_t* lq = find_remote("lo_quantity");
+    //     col_t* le = find_remote("lo_extendedprice");
 
-        std::cout << "[DataCatalog] Fetching PseudoPAX for lo_orderdate, lo_quantity, lo_extendedprice" << std::endl;
-        fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
-    };
+    //     std::cout << "[DataCatalog] Fetching PseudoPAX for lo_orderdate, lo_quantity, lo_extendedprice" << std::endl;
+    //     fetchPseudoPax(1, {"lo_orderdate", "lo_quantity", "lo_extendedprice"});
+    // };
 
-    auto benchQueriesRemote = [this]() -> void {
-        using namespace std::chrono_literals;
+    // auto benchQueriesRemote = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-        for (uint8_t num_rb = 2; num_rb <= 2; ++num_rb) {
-            for (uint64_t bytes = 1ull << 18; bytes <= 1ull << 20; bytes <<= 1) {
-                auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-                std::stringstream logNameStream;
-                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << "_Remote.log";
-                std::string logName = logNameStream.str();
+    //     for (uint8_t num_rb = 2; num_rb <= 2; ++num_rb) {
+    //         for (uint64_t bytes = 1ull << 18; bytes <= 1ull << 20; bytes <<= 1) {
+    //             auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //             std::stringstream logNameStream;
+    //             logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB_" << +num_rb << "_" << +bytes << "_Remote.log";
+    //             std::string logName = logNameStream.str();
 
-                std::cout << "[Task] Set name: " << logName << std::endl;
+    //             std::cout << "[Task] Set name: " << logName << std::endl;
 
-                buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
-                                                .num_own_receive_threads = num_rb,
-                                                .num_remote_send_threads = num_rb,
-                                                .num_remote_receive_threads = num_rb,
-                                                .num_own_receive = num_rb,
-                                                .size_own_receive = bytes,
-                                                .num_remote_receive = num_rb,
-                                                .size_remote_receive = bytes,
-                                                .num_own_send = num_rb,
-                                                .size_own_send = bytes,
-                                                .num_remote_send = num_rb,
-                                                .size_remote_send = bytes,
-                                                .meta_info_size = 16};
+    //             buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+    //                                             .num_own_receive_threads = num_rb,
+    //                                             .num_remote_send_threads = num_rb,
+    //                                             .num_remote_receive_threads = num_rb,
+    //                                             .num_own_receive = num_rb,
+    //                                             .size_own_receive = bytes,
+    //                                             .num_remote_receive = num_rb,
+    //                                             .size_remote_receive = bytes,
+    //                                             .num_own_send = num_rb,
+    //                                             .size_own_send = bytes,
+    //                                             .num_remote_send = num_rb,
+    //                                             .size_remote_send = bytes,
+    //                                             .meta_info_size = 16};
 
-                ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+    //             ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
 
-                using namespace std::chrono_literals;
-                std::this_thread::sleep_for(2s);
+    //             std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
+    //             std::cout << std::endl;
 
-                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
-                std::cout << std::endl;
+    //             executeRemoteBenchmarkingQueries(logName);
+    //         }
 
-                executeRemoteBenchmarkingQueries(logName);
-            }
+    //         std::cout << std::endl;
+    //         std::cout << "QueryBench ended." << std::endl;
+    //     }
+    // };
 
-            std::cout << std::endl;
-            std::cout << "QueryBench ended." << std::endl;
-        }
-    };
+    // auto benchQueriesLocal = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-    auto benchQueriesLocal = [this]() -> void {
-        using namespace std::chrono_literals;
+    //     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //     std::stringstream logNameStream;
+    //     logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "Local.log";
+    //     std::string logName = logNameStream.str();
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "Local.log";
-        std::string logName = logNameStream.str();
+    //     std::cout << "[Task] Set name: " << logName << std::endl;
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+    //     executeLocalBenchmarkingQueries(logName, "Local");
 
-        executeLocalBenchmarkingQueries(logName, "Local");
+    //     std::cout << std::endl;
+    //     std::cout << "NUMAQueryBench ended." << std::endl;
+    // };
 
-        std::cout << std::endl;
-        std::cout << "NUMAQueryBench ended." << std::endl;
-    };
+    // auto benchQueriesNUMA = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-    auto benchQueriesNUMA = [this]() -> void {
-        using namespace std::chrono_literals;
+    //     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //     std::stringstream logNameStream;
+    //     logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "NUMA.log";
+    //     std::string logName = logNameStream.str();
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "NUMA.log";
-        std::string logName = logNameStream.str();
+    //     std::cout << "[Task] Set name: " << logName << std::endl;
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+    //     executeLocalBenchmarkingQueries(logName, "NUMA");
 
-        executeLocalBenchmarkingQueries(logName, "NUMA");
+    //     std::cout << std::endl;
+    //     std::cout << "NUMAQueryBench ended." << std::endl;
+    // };
 
-        std::cout << std::endl;
-        std::cout << "NUMAQueryBench ended." << std::endl;
-    };
+    // auto benchQueriesFrontPage = [this]() -> void {
+    //     using namespace std::chrono_literals;
+    //     uint8_t num_rb = 2;
+    //     uint64_t bytes = 1ull << 19;
 
-    auto benchQueriesFrontPage = [this]() -> void {
-        using namespace std::chrono_literals;
-        uint8_t num_rb = 2;
-        uint64_t bytes = 1ull << 19;
+    //     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //     std::stringstream logNameStream;
+    //     logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "FP_" << +num_rb << "_" << +bytes << "_Remote.log";
+    //     std::string logName = logNameStream.str();
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "FP_" << +num_rb << "_" << +bytes << "_Remote.log";
-        std::string logName = logNameStream.str();
+    //     std::cout << "[Task] Set name: " << logName << std::endl;
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+    //     buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+    //                                     .num_own_receive_threads = num_rb,
+    //                                     .num_remote_send_threads = num_rb,
+    //                                     .num_remote_receive_threads = num_rb,
+    //                                     .num_own_receive = num_rb,
+    //                                     .size_own_receive = bytes,
+    //                                     .num_remote_receive = num_rb,
+    //                                     .size_remote_receive = bytes,
+    //                                     .num_own_send = num_rb,
+    //                                     .size_own_send = bytes,
+    //                                     .num_remote_send = num_rb,
+    //                                     .size_remote_send = bytes,
+    //                                     .meta_info_size = 16};
 
-        buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
-                                        .num_own_receive_threads = num_rb,
-                                        .num_remote_send_threads = num_rb,
-                                        .num_remote_receive_threads = num_rb,
-                                        .num_own_receive = num_rb,
-                                        .size_own_receive = bytes,
-                                        .num_remote_receive = num_rb,
-                                        .size_remote_receive = bytes,
-                                        .num_own_send = num_rb,
-                                        .size_own_send = bytes,
-                                        .num_remote_send = num_rb,
-                                        .size_remote_send = bytes,
-                                        .meta_info_size = 16};
+    //     ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
 
-        ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+    //     std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
+    //     std::cout << std::endl;
 
-        using namespace std::chrono_literals;
-        std::this_thread::sleep_for(2s);
+    //     executeFrontPageBenchmarkingQueries(logName);
 
-        std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
-        std::cout << std::endl;
+    //     std::cout << std::endl;
+    //     std::cout << "QueryBench ended." << std::endl;
+    // };
 
-        executeFrontPageBenchmarkingQueries(logName);
+    // auto benchQueriesRemoteMT = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-        std::cout << std::endl;
-        std::cout << "QueryBench ended." << std::endl;
-    };
+    //     for (uint8_t num_rb = 2; num_rb <= 2; ++num_rb) {
+    //         for (uint64_t bytes = 1ull << 18; bytes <= 1ull << 20; bytes <<= 1) {
+    //             auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //             std::stringstream logNameStream;
+    //             logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_" << +num_rb << "_" << +bytes << "_Remote.log";
+    //             std::string logName = logNameStream.str();
 
-    auto benchQueriesRemoteMT = [this]() -> void {
-        using namespace std::chrono_literals;
+    //             std::cout << "[Task] Set name: " << logName << std::endl;
 
-        for (uint8_t num_rb = 2; num_rb <= 2; ++num_rb) {
-            for (uint64_t bytes = 1ull << 18; bytes <= 1ull << 20; bytes <<= 1) {
-                auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-                std::stringstream logNameStream;
-                logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_" << +num_rb << "_" << +bytes << "_Remote.log";
-                std::string logName = logNameStream.str();
+    //             buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
+    //                                             .num_own_receive_threads = num_rb,
+    //                                             .num_remote_send_threads = num_rb,
+    //                                             .num_remote_receive_threads = num_rb,
+    //                                             .num_own_receive = num_rb,
+    //                                             .size_own_receive = bytes,
+    //                                             .num_remote_receive = num_rb,
+    //                                             .size_remote_receive = bytes,
+    //                                             .num_own_send = num_rb,
+    //                                             .size_own_send = bytes,
+    //                                             .num_remote_send = num_rb,
+    //                                             .size_remote_send = bytes,
+    //                                             .meta_info_size = 16};
 
-                std::cout << "[Task] Set name: " << logName << std::endl;
+    //             ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
 
-                buffer_config_t bufferConfig = {.num_own_send_threads = num_rb,
-                                                .num_own_receive_threads = num_rb,
-                                                .num_remote_send_threads = num_rb,
-                                                .num_remote_receive_threads = num_rb,
-                                                .num_own_receive = num_rb,
-                                                .size_own_receive = bytes,
-                                                .num_remote_receive = num_rb,
-                                                .size_remote_receive = bytes,
-                                                .num_own_send = num_rb,
-                                                .size_own_send = bytes,
-                                                .num_remote_send = num_rb,
-                                                .size_remote_send = bytes,
-                                                .meta_info_size = 16};
+    //             std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
+    //             std::cout << std::endl;
 
-                ConnectionManager::getInstance().reconfigureBuffer(1, bufferConfig);
+    //             executeRemoteMTBenchmarkingQueries(logName);
+    //         }
 
-                using namespace std::chrono_literals;
-                std::this_thread::sleep_for(2s);
+    //         std::cout << std::endl;
+    //         std::cout << "QueryBench ended." << std::endl;
+    //     }
+    // };
 
-                std::cout << "[main] Used connection with id '1' and " << +num_rb << " remote receive buffer (size for one remote receive: " << memordma::Utility::GetBytesReadable(bytes) << ")" << std::endl;
-                std::cout << std::endl;
+    // auto benchQueriesLocalMT = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-                executeRemoteMTBenchmarkingQueries(logName);
-            }
+    //     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //     std::stringstream logNameStream;
+    //     logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_Local.log";
+    //     std::string logName = logNameStream.str();
 
-            std::cout << std::endl;
-            std::cout << "QueryBench ended." << std::endl;
-        }
-    };
+    //     std::cout << "[Task] Set name: " << logName << std::endl;
 
-    auto benchQueriesLocalMT = [this]() -> void {
-        using namespace std::chrono_literals;
+    //     executeLocalMTBenchmarkingQueries(logName, "Local");
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_Local.log";
-        std::string logName = logNameStream.str();
+    //     std::cout << std::endl;
+    //     std::cout << "NUMAQueryBench ended." << std::endl;
+    // };
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
+    // auto benchQueriesNUMAMT = [this]() -> void {
+    //     using namespace std::chrono_literals;
 
-        executeLocalMTBenchmarkingQueries(logName, "Local");
+    //     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    //     std::stringstream logNameStream;
+    //     logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_NUMA.log";
+    //     std::string logName = logNameStream.str();
 
-        std::cout << std::endl;
-        std::cout << "NUMAQueryBench ended." << std::endl;
-    };
+    //     std::cout << "[Task] Set name: " << logName << std::endl;
 
-    auto benchQueriesNUMAMT = [this]() -> void {
-        using namespace std::chrono_literals;
+    //     executeLocalMTBenchmarkingQueries(logName, "NUMA");
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "QB-MT_NUMA.log";
-        std::string logName = logNameStream.str();
+    //     std::cout << std::endl;
+    //     std::cout << "NUMAQueryBench ended." << std::endl;
+    // };
 
-        std::cout << "[Task] Set name: " << logName << std::endl;
-
-        executeLocalMTBenchmarkingQueries(logName, "NUMA");
-
-        std::cout << std::endl;
-        std::cout << "NUMAQueryBench ended." << std::endl;
+    auto benchmarksAllLambda = [this]() -> void {
+        Benchmarks::getInstance().executeAllBenchmarks();
     };
 
     TaskManager::getInstance().registerTask(std::make_shared<Task>("createColumn", "[DataCatalog] Create new column", createColLambda));
@@ -423,15 +420,16 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(std::make_shared<Task>("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("logColumn", "[DataCatalog] Log a column to file", logLambda));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkFrontPage", "[DataCatalog] Execute Pipeline FrontPage", benchQueriesFrontPage));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkRemote", "[DataCatalog] Execute Single Pipeline Remote", benchQueriesRemote));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocal", "[DataCatalog] Execute Single Pipeline Local", benchQueriesLocal));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMA", "[DataCatalog] Execute Single Pipeline NUMA", benchQueriesNUMA));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkFrontPage", "[DataCatalog] Execute Pipeline FrontPage", benchQueriesFrontPage));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkMTMP", "[DataCatalog] Execute Multi Pipeline Remote", benchQueriesRemoteMT));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkLocalMTMP", "[DataCatalog] Execute Multi Pipeline MT Local", benchQueriesLocalMT));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarkNUMAMTMP", "[DataCatalog] Execute Multi Pipeline MT NUMA", benchQueriesNUMAMT));
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarksAll", "[DataCatalog] Execute All Benchmarks", benchmarksAllLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
+    // TaskManager::getInstance().registerTask(std::make_shared<Task>("pseudoPaxTest", "[DataCatalog] PseudoPaxTest", pseudoPaxLambda));
 
     /* Message Layout
      * [ header_t | payload ]
@@ -440,7 +438,6 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_sendInfo = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         reset_buffer();
-        // std::cout << "[DataCatalog] Hello from the Data Catalog" << std::endl;
         const uint8_t code = static_cast<uint8_t>(catalog_communication_code::receive_column_info);
         const size_t columnCount = cols.size();
 
@@ -449,8 +446,8 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
             totalPayloadSize += col.first.size();  // actual c_string
         }
-        // std::cout << "[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;
-        char* data = (char*)malloc(totalPayloadSize);
+        LOG_DEBUG2("[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;)
+        char* data = reinterpret_cast<char*>(numa_alloc_onnode(totalPayloadSize, 0));
         char* tmp = data;
 
         // How many columns does the receiver need to read
@@ -472,10 +469,10 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, col.first.c_str(), identlen);
             tmp += identlen;
         }
-        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code, Strategies::push);
+        ConnectionManager::getInstance().sendData(conId, data, totalPayloadSize, nullptr, 0, code);
 
         // Release temporary buffer
-        free(data);
+        numa_free(reinterpret_cast<void*>(data), totalPayloadSize);
     };
 
     /* Message Layout
@@ -484,8 +481,7 @@ DataCatalog::DataCatalog() {
      * [ columnInfoCount | [col_network_info, identLength, ident]* ]
      */
     CallbackFunction cb_receiveInfo = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         size_t colCnt;
         memcpy(&colCnt, data, sizeof(size_t));
@@ -528,13 +524,13 @@ DataCatalog::DataCatalog() {
              */
             auto fetchLambda = [this, conId]() -> void {
                 print_all_remotes();
-                std::cout << "[DataCatalog] Fetch data for which column?" << std::endl;
+                LOG_CONSOLE("[DataCatalog] Fetch data for which column?" << std::endl;)
                 std::string ident;
                 std::cin >> ident;
                 std::cin.clear();
                 std::cin.ignore(10000, '\n');
 
-                std::cout << "Fetch mode [1] whole column [2] (next) chunk" << std::endl;
+                LOG_CONSOLE("Fetch mode [1] whole column [2] (next) chunk" << std::endl;)
                 size_t mode;
                 std::cin >> mode;
                 std::cin.clear();
@@ -551,7 +547,7 @@ DataCatalog::DataCatalog() {
                         break;
                     }
                     default: {
-                        std::cout << "[DataCatalog] No valid value selected, aborting." << std::endl;
+                        LOG_WARNING("[DataCatalog] No valid value selected, aborting." << std::endl;)
                         return;
                     }
                 }
@@ -559,7 +555,6 @@ DataCatalog::DataCatalog() {
 
             if (!TaskManager::getInstance().hasTask("fetchColDataFromRemote")) {
                 TaskManager::getInstance().registerTask(std::make_shared<Task>("fetchColDataFromRemote", "[DataCatalog] Fetch data from specific remote column", fetchLambda));
-                std::cout << "[DataCatalog] Registered new Task!" << std::endl;
             }
             remoteInfoReady();
         }
@@ -575,9 +570,7 @@ DataCatalog::DataCatalog() {
      * [ columnNameLength, columnName ]
      */
     CallbackFunction cb_fetchCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
-        // char* column_data = data + head->payload_start;
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
@@ -607,7 +600,7 @@ DataCatalog::DataCatalog() {
 
             memcpy(tmp, &col->second->datatype, sizeof(col_data_t));
 
-            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data), Strategies::push);
+            ConnectionManager::getInstance().sendData(conId, (char*)col->second->data, col->second->sizeInBytes, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_data));
 
             free(appMetaData);
         }
@@ -618,11 +611,11 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receiveCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Actual column data payload
-        char* column_data = data + head->payload_start;
+        char* column_data = rcv_buffer->getPayloadBasePtr();
 
         size_t identSz;
         memcpy(&identSz, data, sizeof(size_t));
@@ -675,7 +668,7 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;
+                LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;)
                 return;
             }
         }
@@ -702,7 +695,7 @@ DataCatalog::DataCatalog() {
     // Send a chunk of a column to the requester
     CallbackFunction cb_fetchColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
         // char* column_data = data + head->payload_start;
 
         size_t identSz;
@@ -770,7 +763,7 @@ DataCatalog::DataCatalog() {
             info->curr_offset += chunk_size;
             // std::cout << "Sent chunk. Offset now: " << info->curr_offset << " Total col size: " << info->col->sizeInBytes << std::endl;
 
-            ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk), Strategies::push);
+            ConnectionManager::getInstance().sendData(conId, data_start, chunk_size, appMetaData, appMetaSize, static_cast<uint8_t>(catalog_communication_code::receive_column_chunk));
 
             free(appMetaData);
         }
@@ -783,11 +776,11 @@ DataCatalog::DataCatalog() {
     CallbackFunction cb_receiveColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // std::cout << "[DataCatalog] Received a message with a (part of a) column chnunk." << std::endl;
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Actual column data payload
-        char* column_data = data + head->payload_start;
+        char* column_data = rcv_buffer->getPayloadBasePtr();
 
         size_t chunk_offset;
         memcpy(&chunk_offset, data, sizeof(size_t));
@@ -815,9 +808,9 @@ DataCatalog::DataCatalog() {
             if (col_network_info_iterator != remote_col_info.end()) {
                 col = add_remote_column(ident, col_network_info_iterator->second);
             } else {
-                std::cout << "[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;
+                LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;)
                 for (auto k : remote_col_info) {
-                    std::cout << k.first << " " << &k.second << std::endl;
+                    LOG_WARNING(k.first << " " << &k.second << std::endl;)
                 }
                 return;
             }
@@ -858,7 +851,7 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_fetchPseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
         size_t* ident_lens = reinterpret_cast<size_t*>(data);
 
         // Advance data to the first ident character
@@ -1037,7 +1030,7 @@ DataCatalog::DataCatalog() {
             memcpy(tmp, &bpc, sizeof(size_t));
             tmp += sizeof(size_t);
 
-            ConnectionManager::getInstance().sendData(conId, info->payload_buf + offset_size_pair.first, offset_size_pair.second, tmp_meta, info->metadata_size, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), Strategies::push);
+            ConnectionManager::getInstance().sendData(conId, info->payload_buf + offset_size_pair.first, offset_size_pair.second, tmp_meta, info->metadata_size, static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax));
             free(tmp_meta);
             if (info->prepare_complete && info->prepared_offsets.empty()) {
                 info->reset();
@@ -1053,11 +1046,11 @@ DataCatalog::DataCatalog() {
      */
     CallbackFunction cb_receivePseudoPax = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
-        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getBufferPtr());
+        package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr());
         // Start of AppMetaData
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getAppMetaPtr();
         // Start of actual payload
-        char* pax_ptr = data + head->payload_start;
+        char* pax_ptr = rcv_buffer->getPayloadBasePtr();
 
         size_t chunk_offset;
         memcpy(&chunk_offset, data, sizeof(size_t));
@@ -1121,7 +1114,7 @@ DataCatalog::DataCatalog() {
 
     CallbackFunction cb_reconfigureChunkSize = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->buf);
-        char* data = rcv_buffer->getBufferPtr() + sizeof(package_t::header_t);
+        char* data = rcv_buffer->getPayloadBasePtr();
 
         uint64_t newChunkSize;
         memcpy(&newChunkSize, data, sizeof(uint64_t));
@@ -1148,6 +1141,33 @@ DataCatalog::DataCatalog() {
         reconfigure_done.notify_all();
     };
 
+    CallbackFunction cb_generateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        uint64_t* data = reinterpret_cast<uint64_t*>(rcv_buffer->getPayloadBasePtr());
+        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data) + (sizeof(uint64_t) * 6));
+
+        generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false, createTables);
+        reset_buffer();
+    };
+
+    CallbackFunction cb_ackGenerateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        std::lock_guard<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = true;
+        data_generation_done.notify_all();
+    };
+
+    CallbackFunction cb_clearCatalog = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        DataCatalog::getInstance().clear();
+    };
+
+    CallbackFunction cb_ackClearCatalog = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        std::lock_guard<std::mutex> lk(clearCatalogLock);
+        clearCatalogDone = true;
+        clear_catalog_done.notify_all();
+    };
+
     registerCallback(static_cast<uint8_t>(catalog_communication_code::send_column_info), cb_sendInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_column_info), cb_receiveInfo);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::fetch_column_data), cb_fetchCol);
@@ -1158,6 +1178,10 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax), cb_receivePseudoPax);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), cb_reconfigureChunkSize);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size), cb_ackReconfigureChunkSize);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data), cb_generateBenchmarkData);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), cb_ackGenerateBenchmarkData);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::clear_catalog), cb_clearCatalog);
+    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), cb_ackClearCatalog);
 }
 
 DataCatalog&
@@ -1167,10 +1191,14 @@ DataCatalog::getInstance() {
 }
 
 DataCatalog::~DataCatalog() {
-    clear();
+    clear(false, true);
 }
 
-void DataCatalog::clear() {
+void DataCatalog::clear(bool sendRemote, bool destructor) {
+    if (sendRemote) {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::clear_catalog), true);
+    }
+
     for (auto it : cols) {
         delete it.second;
     }
@@ -1179,22 +1207,34 @@ void DataCatalog::clear() {
         delete it.second;
     }
     remote_cols.clear();
+
+    remote_col_info.clear();
+
+    tables.clear();
+
+    if (!destructor && sendRemote) {
+        std::unique_lock<std::mutex> lk(clearCatalogLock);
+        if (!clearCatalogDone) {
+            clear_catalog_done.wait(lk, [this] { return clearCatalogDone; });
+        }
+    } else if (!destructor) {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), true);
+    }
 }
 
 void DataCatalog::registerCallback(uint8_t code, CallbackFunction cb) const {
     if (ConnectionManager::getInstance().registerCallback(code, cb)) {
-        std::cout << "[DataCatalog] Successfully added callback for code " << static_cast<uint64_t>(code) << std::endl;
+        LOG_INFO("[DataCatalog] Successfully added callback for code " << static_cast<uint64_t>(code) << std::endl;)
     } else {
-        std::cout << "[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;
+        LOG_WARNING("[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;)
     }
 }
 
-col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, size_t elemCount) {
-    // std::cout << "Calling gen with type " << type << std::endl;
+col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, size_t elemCount, int node) {
     auto it = cols.find(ident);
 
     if (it != cols.end()) {
-        std::cout << "Column width ident " << ident << " already present, returning old data." << std::endl;
+        LOG_INFO("Column width ident " << ident << " already present, returning old data." << std::endl;)
         return it;
     }
 
@@ -1207,7 +1247,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
         case col_data_t::gen_smallint: {
             std::uniform_int_distribution<uint8_t> distribution(0, 99);
             tmp->datatype = col_data_t::gen_smallint;
-            tmp->allocate_aligned_internal<uint8_t>(elemCount);
+            tmp->allocate_on_numa<uint8_t>(elemCount, node);
             auto data = reinterpret_cast<uint8_t*>(tmp->data);
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
@@ -1216,9 +1256,9 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
             break;
         }
         case col_data_t::gen_bigint: {
-            std::uniform_int_distribution<uint64_t> distribution(0, 99);
+            std::uniform_int_distribution<uint64_t> distribution(0, 100);
             tmp->datatype = col_data_t::gen_bigint;
-            tmp->allocate_aligned_internal<uint64_t>(elemCount);
+            tmp->allocate_on_numa<uint64_t>(elemCount, node);
             auto data = reinterpret_cast<uint64_t*>(tmp->data);
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
@@ -1229,7 +1269,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
         case col_data_t::gen_float: {
             std::uniform_real_distribution<float> distribution(0, 50);
             tmp->datatype = col_data_t::gen_float;
-            tmp->allocate_aligned_internal<float>(elemCount);
+            tmp->allocate_on_numa<float>(elemCount, node);
             auto data = reinterpret_cast<float*>(tmp->data);
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
@@ -1240,7 +1280,7 @@ col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, s
         case col_data_t::gen_double: {
             std::uniform_real_distribution<double> distribution(0, 50);
             tmp->datatype = col_data_t::gen_double;
-            tmp->allocate_aligned_internal<double>(elemCount);
+            tmp->allocate_on_numa<double>(elemCount, node);
             auto data = reinterpret_cast<double*>(tmp->data);
             for (size_t i = 0; i < elemCount; ++i) {
                 data[i] = distribution(generator);
@@ -1272,60 +1312,82 @@ col_t* DataCatalog::find_remote(std::string ident) const {
     return nullptr;
 }
 
+col_t* DataCatalog::add_column(std::string ident, col_t* col) {
+    return cols.insert({ident, col}).first->second;
+}
+
 col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
     std::lock_guard<std::mutex> _lka(appendLock);
 
     auto it = remote_cols.find(name);
     if (it != remote_cols.end()) {
-        // std::cout << "[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;
+        LOG_INFO("[DataCatalog] Column with same ident ('" << name << "') already present, cannot add remote column." << std::endl;)
         return it->second;
     } else {
-        // std::cout << "[DataCatalog] Creating new remote column: " << name << std::endl;
+        LOG_DEBUG1("[DataCatalog] Creating new remote column: " << name << std::endl;)
         col_t* col = new col_t();
         col->ident = name;
         col->is_remote = true;
         col->datatype = (col_data_t)ni.type_info;
-        col->allocate_aligned_internal((col_data_t)ni.type_info, ni.size_info);
+        col->allocate_on_numa((col_data_t)ni.type_info, ni.size_info, 0);
         remote_cols.insert({name, col});
         return col;
     }
 }
 
+std::vector<std::string> DataCatalog::getLocalColumnNames() const {
+    std::vector<std::string> out;
+    for (auto it : cols) {
+        out.push_back(it.first);
+    }
+
+    return out;
+}
+
+std::vector<std::string> DataCatalog::getRemoteColumnNames() const {
+    std::vector<std::string> out;
+    for (auto it : remote_cols) {
+        out.push_back(it.first);
+    }
+
+    return out;
+}
+
 void DataCatalog::print_column(std::string& ident) const {
     auto it = cols.find(ident);
     if (it != cols.end()) {
-        std::cout << "[DataCatalog]" << (*it).second->print_data_head() << std::endl;
+        LOG_INFO("[DataCatalog]" << (*it).second->print_data_head() << std::endl;)
     } else {
-        std::cout << "[DataCatalog] No Entry for ident " << ident << std::endl;
+        LOG_WARNING("[DataCatalog] No Entry for ident " << ident << std::endl;)
     }
 }
 
 void DataCatalog::print_all() const {
-    std::cout << "### Local Data Catalog ###" << std::endl;
+    LOG_INFO("### Local Data Catalog ###" << std::endl;)
     if (cols.size() == 0) {
-        std::cout << "<empty>" << std::endl;
+        LOG_INFO("<empty>" << std::endl;)
     }
     for (auto it : cols) {
-        std::cout << "[" << it.first << "]: " << it.second->print_identity() << std::endl;
+        LOG_INFO("[" << it.first << "]: " << it.second->print_identity() << std::endl;)
     }
 }
 
 void DataCatalog::print_all_remotes() const {
-    std::cout << "### Remote Data Catalog ###" << std::endl;
+    LOG_INFO("### Remote Data Catalog ###" << std::endl;)
     if (remote_col_info.size() == 0) {
-        std::cout << "<empty>" << std::endl;
+        LOG_INFO("<empty>" << std::endl;)
     }
     for (auto it : remote_col_info) {
-        std::cout << "[" << it.first << "]: ";
+        LOG_INFO("[" << it.first << "]: ";)
         auto remote_col = remote_cols.find(it.first);
         if (remote_col != remote_cols.end()) {
-            std::cout << remote_col->second->print_identity();
+            LOG_INFO(remote_col->second->print_identity();)
             auto rem_info = remote_col_info.find(it.first);
-            std::cout << " (" << rem_info->second.received_bytes << " received)";
+            LOG_INFO(" (" << rem_info->second.received_bytes << " received)";)
         } else {
-            std::cout << it.second.print_identity() << " [nothing local]";
+            LOG_INFO(it.second.print_identity() << " [nothing local]";)
         }
-        std::cout << std::endl;
+        LOG_INFO(std::endl;)
     }
 }
 
@@ -1344,12 +1406,12 @@ void DataCatalog::eraseAllRemoteColumns() {
 }
 
 void DataCatalog::fetchColStub(std::size_t conId, std::string& ident, bool wholeColumn) const {
-    char* payload = (char*)malloc(ident.size() + sizeof(size_t));
+    char* payload = reinterpret_cast<char*>(malloc(ident.size() + sizeof(size_t)));
     const size_t sz = ident.size();
     memcpy(payload, &sz, sizeof(size_t));
     memcpy(payload + sizeof(size_t), ident.c_str(), sz);
     catalog_communication_code code = wholeColumn ? catalog_communication_code::fetch_column_data : catalog_communication_code::fetch_column_chunk;
-    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code), Strategies::push);
+    ConnectionManager::getInstance().sendData(conId, payload, sz + sizeof(size_t), nullptr, 0, static_cast<uint8_t>(code));
     free(payload);
 }
 
@@ -1412,7 +1474,7 @@ void DataCatalog::fetchPseudoPax(std::size_t conId, std::vector<std::string> ide
         tmp += id.size();
     }
     const size_t total_payload_size = (sizeof(size_t) * (idents.size() + 1)) + string_sizes;
-    ConnectionManager::getInstance().sendData(conId, payload, total_payload_size, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_pseudo_pax), Strategies::push);
+    ConnectionManager::getInstance().sendData(conId, payload, total_payload_size, nullptr, 0, static_cast<uint8_t>(catalog_communication_code::fetch_pseudo_pax));
     free(payload);
 }
 
@@ -1433,13 +1495,13 @@ void DataCatalog::fetchRemoteInfo() {
     //     }
     // }
     remote_info_available.wait(lk, [this] { return col_info_received; });
-};
+}
 
 void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold) {
     using namespace std::chrono_literals;
 
     if (newChunkSize == 0 || newChunkThreshold == 0) {
-        std::cout << "Either the new Chunk Size or the new Chunk Threshold was 0!" << std::endl;
+        LOG_WARNING("Either the new Chunk Size or the new Chunk Threshold was 0!" << std::endl;)
         return;
     }
 
@@ -1450,6 +1512,73 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
 
     std::unique_lock<std::mutex> lk(reconfigure_lock);
     reconfigured = false;
-    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), Strategies::push);
+    ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
     reconfigure_done.wait(lk, [this] { return reconfigured; });
+}
+
+void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote, bool createTables) {
+    LOG_DEBUG1("Generating Benchmark Data" << std::endl;)
+
+    const uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = false;
+        char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) * 6 + sizeof(bool)));
+        char* tmp = remInfos;
+        std::memcpy(reinterpret_cast<void*>(tmp), &distinctLocalColumns, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnsForLocal, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localColumnElements, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &percentageOfRemote, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &createTables, sizeof(bool));
+
+        ConnectionManager::getInstance().sendData(1, remInfos, sizeof(uint64_t) * 6 + sizeof(bool), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
+    }
+
+    if (createTables) {
+        LOG_DEBUG1("Creating Tables" << std::endl;)
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "tab_" + std::to_string(i);
+
+            DataCatalog::getInstance().tables.insert(std::make_pair(name, new table_t(name, remoteColumnsForLocal + 1, localColumnElements, 0, percentageOfRemote, true)));
+
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                DataCatalog::getInstance().tables.insert(std::make_pair(sub_name, new table_t(sub_name, 2, remoteColumnSize, 0, percentageOfRemote, false)));
+            }
+        }
+    } else {
+        LOG_DEBUG1("Creating Columns" << std::endl;)
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "col_" + std::to_string(i);
+
+            generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
+
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
+            }
+        }
+    }
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        if (!dataGenerationDone) {
+            data_generation_done.wait(lk, [this] { return dataGenerationDone; });
+        }
+    } else {
+        ConnectionManager::getInstance().sendOpCode(1, static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), true);
+    }
+
+    print_all();
 }

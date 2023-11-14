@@ -23,7 +23,11 @@ enum class catalog_communication_code : uint8_t {
     receive_pseudo_pax,
     receive_last_pseudo_pax,
     reconfigure_chunk_size,
-    ack_reconfigure_chunk_size
+    ack_reconfigure_chunk_size,
+    generate_benchmark_data,
+    ack_generate_benchmark_data,
+    clear_catalog,
+    ack_clear_catalog
 };
 
 enum class col_data_t : unsigned char {
@@ -65,7 +69,7 @@ struct col_network_info {
             case col_data_t::gen_bigint:
                 return size_info * sizeof(uint64_t);
             default:
-                std::cout << "[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;
+                LOG_WARNING("[col_network_info] Datatype case not implemented! Column size not calculated." << std::endl;)
                 return 0;
         }
     }
@@ -115,6 +119,7 @@ struct col_network_info {
 };
 
 struct col_t;
+struct table_t;
 
 struct inflight_col_info_t {
     col_t* col;
@@ -134,7 +139,7 @@ struct pax_inflight_col_info_t {
     char* payload_buf = nullptr;
 
     void reset() {
-        std::lock_guard<std::mutex> lk( offset_lock );
+        std::lock_guard<std::mutex> lk(offset_lock);
         std::queue<std::pair<size_t, size_t> > empty;
         prepared_offsets.swap(empty);
         if (metadata_buf) delete metadata_buf;
@@ -167,13 +172,19 @@ class DataCatalog {
     col_remote_dict_t remote_col_info;
     bool col_info_received = false;
     bool reconfigured = false;
+    bool dataGenerationDone = false;
+    bool clearCatalogDone = false;
     mutable std::mutex remote_info_lock;
     mutable std::mutex reconfigure_lock;
     mutable std::mutex appendLock;
     mutable std::mutex inflightLock;
     mutable std::mutex paxInflightLock;
+    mutable std::mutex dataGenerationLock;
+    mutable std::mutex clearCatalogLock;
     std::condition_variable remote_info_available;
     std::condition_variable reconfigure_done;
+    std::condition_variable data_generation_done;
+    std::condition_variable clear_catalog_done;
 
     incomplete_transimssions_dict_t inflight_cols;
     incomplete_pax_transimssions_dict_t pax_inflight_cols;
@@ -183,6 +194,7 @@ class DataCatalog {
    public:
     uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
     uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
+    std::map<std::string, table_t*> tables;
 
     static DataCatalog& getInstance();
 
@@ -190,13 +202,14 @@ class DataCatalog {
     void operator=(DataCatalog const&) = delete;
     ~DataCatalog();
 
-    void clear();
+    void clear(bool sendRemot = false, bool destructor = false);
 
     void registerCallback(uint8_t code, CallbackFunction cb) const;
 
-    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount);
+    col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount, int node);
     col_t* find_local(std::string ident) const;
     col_t* find_remote(std::string ident) const;
+    col_t* add_column(std::string ident, col_t* col);
     col_t* add_remote_column(std::string name, col_network_info ni);
 
     void remoteInfoReady();
@@ -205,9 +218,14 @@ class DataCatalog {
     void print_all() const;
     void print_all_remotes() const;
 
+    std::vector<std::string> getLocalColumnNames() const;
+    std::vector<std::string> getRemoteColumnNames() const;
+
     void eraseAllRemoteColumns();
 
     void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);
+
+    void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
     void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
