@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Column.h>
+#include <Column.hpp>
 
 #include <vector>
 
@@ -11,7 +11,7 @@ class Operators {
         std::vector<size_t> out_vec;
         out_vec.reserve(blockSize);
         if (isFirst) {
-            for (auto e = 0; e < blockSize; ++e) {
+            for (size_t e = 0; e < blockSize; ++e) {
                 if (data[e] < predicate) {
                     out_vec.push_back(e);
                 }
@@ -116,7 +116,7 @@ class Operators {
         std::vector<size_t> out_vec;
         out_vec.reserve(blockSize);
         if (isFirst) {
-            for (auto e = 0; e < blockSize; ++e) {
+            for (size_t e = 0; e < blockSize; ++e) {
                 if (predicate_1 <= data[e] && data[e] <= predicate_2) {
                     out_vec.push_back(e);
                 }

@@ -184,7 +184,7 @@ inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_
 };
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
-uint64_t pipe_1(const uint64_t predicate, const std::vector<std::string> idents) {
+uint64_t pipe_1(const uint64_t, const std::vector<std::string> idents) {
     col_t* col_0;
     col_t* col_1;
     col_t* col_2;
@@ -615,7 +615,7 @@ size_t hash_join_1(std::pair<std::string, std::string> idents) {
     for (size_t i = 0; i < columnSize1; i++) {
         auto it = hashMap.find(data_1[i]);
         if (it != hashMap.end()) {
-            for (const auto& matchingIndex : it->second) {
+            for (const auto& matchingIndex: it->second) {
                 ++joinResult;
             }
         }
@@ -1599,14 +1599,14 @@ void Benchmarks::execRDMAHashJoinBenchmark() {
                     DataCatalog::getInstance().eraseAllRemoteColumns();
                     DataCatalog::getInstance().fetchRemoteInfo();
 
-                    auto do_work = [&](std::string ident, size_t rbc, size_t func_indicator) {
+                    auto do_work = [&](std::string ident, size_t rbc, size_t func_id) {
                         size_t res = 0;
                         size_t (*func)(std::pair<std::string, std::string> idents);
-                        if (func_indicator == 1) {
+                        if (func_id == 1) {
                             func = hash_join_1;
-                        } else if (func_indicator == 2) {
+                        } else if (func_id == 2) {
                             func = hash_join_2;
-                        } else if (func_indicator == 3) {
+                        } else if (func_id == 3) {
                             func = hash_join_3;
                         } else {
                             return;
@@ -1980,8 +1980,8 @@ void Benchmarks::executeAllBenchmarks() {
 
     // execRDMABenchmark();
 
-    // execRDMAHashJoinBenchmark();
+    execRDMAHashJoinBenchmark();
 
-    execRDMAHashJoinPGBenchmark();
+    // execRDMAHashJoinPGBenchmark();
     // execRDMAHashJoinStarBenchmark();
 }

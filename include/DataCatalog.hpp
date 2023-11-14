@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "ConnectionManager.h"
+#include "ConnectionManager.hpp"
 
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xA0,
@@ -112,6 +112,10 @@ struct col_network_info {
                 ss << "double"
                    << " " << size_info * sizeof(double) << " Bytes";
                 break;
+            }
+            default: {
+                using namespace memConnect;
+                LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
             }
         }
         return std::move(ss.str());

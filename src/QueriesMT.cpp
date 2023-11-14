@@ -1,9 +1,10 @@
-#include <Column.h>
-#include <DataCatalog.h>
-#include <Queries.h>
 #include <omp.h>
 
 #include <future>
+
+#include "Column.hpp"
+#include "DataCatalog.hpp"
+#include "Queries.h"
 
 inline void wait_col_data_ready(col_t* _col, char* _data) {
     std::unique_lock<std::mutex> lk(_col->iteratorLock);
@@ -27,7 +28,7 @@ inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, co
     std::vector<size_t> out_vec;
     out_vec.reserve(blockSize);
     if (isFirst) {
-        for (auto e = 0; e < blockSize; ++e) {
+        for (size_t e = 0; e < blockSize; ++e) {
             if (data[e] < predicate) {
                 out_vec.push_back(e);
             }
@@ -499,8 +500,6 @@ uint64_t pipeTempThree(col_t* column1, col_t* column2, col_t* column3, const uin
             }
         }
 
-        int tid = omp_get_thread_num();
-
         for (auto idx : le_idx) {
             sum += (data_2[idx] * data_3[idx]);
             // ++sum;
@@ -732,31 +731,31 @@ void doBenchmark(Fn&& f1, Fn&& f2, Fn&& f3, Fn&& f4, Fn&& f5, Fn&& f6, std::ofst
             DataCatalog::getInstance().eraseAllRemoteColumns();
         }
 
-        // DataCatalog::getInstance().fetchRemoteInfo();
-        // s_ts = std::chrono::high_resolution_clock::now();
-        // sum = f5();
-        // e_ts = std::chrono::high_resolution_clock::now();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f5();
+        e_ts = std::chrono::high_resolution_clock::now();
 
-        // secs = e_ts - s_ts;
+        secs = e_ts - s_ts;
 
-        // out << "Remote\tPaxed\tPipeline\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl
-        //     << std::flush;
-        // std::cout << "Remote\tPaxed\tPipeline\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl;
+        out << "Remote\tPaxed\tPipeline\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl
+            << std::flush;
+        std::cout << "Remote\tPaxed\tPipeline\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl;
 
-        // DataCatalog::getInstance().eraseAllRemoteColumns();
+        DataCatalog::getInstance().eraseAllRemoteColumns();
 
-        // DataCatalog::getInstance().fetchRemoteInfo();
-        // s_ts = std::chrono::high_resolution_clock::now();
-        // sum = f6();
-        // e_ts = std::chrono::high_resolution_clock::now();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sum = f6();
+        e_ts = std::chrono::high_resolution_clock::now();
 
-        // secs = e_ts - s_ts;
+        secs = e_ts - s_ts;
 
-        // out << "Remote\tPaxed\tPrefetch\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl
-        //     << std::flush;
-        // std::cout << "Remote\tPaxed\tPrefetch\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl;
+        out << "Remote\tPaxed\tPrefetch\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl
+            << std::flush;
+        std::cout << "Remote\tPaxed\tPrefetch\t000000\t" << benchIdent << "\t" << overlapIdent << "\t" << sum << "\t" << secs.count() << std::endl;
 
-        // DataCatalog::getInstance().eraseAllRemoteColumns();
+        DataCatalog::getInstance().eraseAllRemoteColumns();
     }
 }
 

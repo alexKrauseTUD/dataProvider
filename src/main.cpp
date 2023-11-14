@@ -1,19 +1,18 @@
-#include <TaskManager.h>
-#include <Utility.h>
-#include <include/ConnectionManager.h>
-#include <include/TaskManager.h>
-#include <include/common.h>
 #include <numa.h>
 #include <numaif.h>
 #include <omp.h>
 
+#include <ConnectionManager.hpp>
+#include <Logger.hpp>
+#include <TaskManager.hpp>
+#include <Utility.hpp>
 #include <algorithm>
+#include <common.hpp>
 #include <iostream>
 
 #include "Benchmarks.hpp"
-#include "Column.h"
-#include "DataCatalog.h"
-#include "Logger.h"
+#include "Column.hpp"
+#include "DataCatalog.hpp"
 #include "Worker.hpp"
 
 void signal_handler(int signal) {
@@ -46,7 +45,7 @@ bool checkLinkUp() {
     return (result.find("State: Active") != std::string::npos);
 }
 
-using namespace memordma;
+using namespace memConnect;
 
 int main(int argc, char *argv[]) {
     for (auto sig : {SIGINT, SIGUSR1}) {
@@ -83,9 +82,9 @@ int main(int argc, char *argv[]) {
     };
 
     TaskManager::getInstance().setGlobalAbortFunction(globalExit);
-    if (ConnectionManager::getInstance().configuration->get<bool>(MEMO_DEFAULT_CONNECTION_AUTO_LISTEN)) {
+    if (ConnectionManager::getInstance().configuration->get<bool>(MEMCONNECT_DEFAULT_CONNECTION_AUTO_LISTEN)) {
         std::thread([]() -> void { TaskManager::getInstance().executeByIdent("listenConnection"); }).detach();
-    } else if (ConnectionManager::getInstance().configuration->get<bool>(MEMO_DEFAULT_CONNECTION_AUTO_INITIATE)) {
+    } else if (ConnectionManager::getInstance().configuration->get<bool>(MEMCONNECT_DEFAULT_CONNECTION_AUTO_INITIATE)) {
         std::thread([]() -> void { TaskManager::getInstance().executeByIdent("openConnection"); }).detach();
     }
 

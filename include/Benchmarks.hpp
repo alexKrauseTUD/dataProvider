@@ -45,5 +45,5 @@ class Benchmarks {
     void execRDMAHashJoinStarBenchmark();
 
     static const size_t WORKER_NUMBER = 8;
-    Worker workers[WORKER_NUMBER];
+    // Worker workers[WORKER_NUMBER];
 };
