@@ -615,7 +615,7 @@ size_t hash_join_1(std::pair<std::string, std::string> idents) {
     for (size_t i = 0; i < columnSize1; i++) {
         auto it = hashMap.find(data_1[i]);
         if (it != hashMap.end()) {
-            for (const auto& matchingIndex: it->second) {
+            for (const auto& matchingIndex : it->second) {
                 ++joinResult;
             }
         }
@@ -1386,10 +1386,7 @@ void Benchmarks::execUPIBenchmark() {
                     }
                 }
 
-                {
-                    using namespace std::chrono_literals;
-                    std::this_thread::sleep_for(100ms);
-                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 s_ts = std::chrono::high_resolution_clock::now();
                 sync_point_1.arrive_and_wait();
@@ -1410,10 +1407,8 @@ void Benchmarks::execUPIBenchmark() {
 
                 std::for_each(localWorkers.begin(), localWorkers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
                 std::for_each(remoteWorkers.begin(), remoteWorkers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
-                {
-                    using namespace std::chrono_literals;
-                    std::this_thread::sleep_for(100ms);
-                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
     }
@@ -1517,10 +1512,7 @@ void Benchmarks::execRDMABenchmark() {
                     }
                 }
 
-                {
-                    using namespace std::chrono_literals;
-                    std::this_thread::sleep_for(100ms);
-                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 s_ts = std::chrono::high_resolution_clock::now();
                 sync_point_1.arrive_and_wait();
@@ -1543,10 +1535,7 @@ void Benchmarks::execRDMABenchmark() {
                 std::for_each(remoteWorkers.begin(), remoteWorkers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
                 localWorkers.clear();
                 remoteWorkers.clear();
-                {
-                    using namespace std::chrono_literals;
-                    std::this_thread::sleep_for(100ms);
-                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
     }
@@ -1631,10 +1620,7 @@ void Benchmarks::execRDMAHashJoinBenchmark() {
                         }
                     }
 
-                    {
-                        using namespace std::chrono_literals;
-                        std::this_thread::sleep_for(100ms);
-                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                     s_ts = std::chrono::high_resolution_clock::now();
                     sync_point_1.arrive_and_wait();
@@ -1654,10 +1640,7 @@ void Benchmarks::execRDMAHashJoinBenchmark() {
 
                     std::for_each(workers.begin(), workers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
                     workers.clear();
-                    {
-                        using namespace std::chrono_literals;
-                        std::this_thread::sleep_for(100ms);
-                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             }
         }
@@ -1778,11 +1761,8 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
 
                         spawn_threads(kernel_pair.first, local_pin_list, worker_pool, &ready_future, local_buffer_cnt, join_cnt, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "col_");
 
-                        {
-                            using namespace std::chrono_literals;
-                            while (ready_workers != local_buffer_cnt) {
-                                std::this_thread::sleep_for(1ms);
-                            }
+                        while (ready_workers != local_buffer_cnt) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
                         }
 
                         auto start = std::chrono::high_resolution_clock::now();
@@ -1902,11 +1882,8 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
 
                         spawn_threads(kernel_pair.first, local_pin_list, worker_pool, &ready_future, local_buffer_cnt, join_cnt, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "tab_");
 
-                        {
-                            using namespace std::chrono_literals;
-                            while (ready_workers != local_buffer_cnt) {
-                                std::this_thread::sleep_for(1ms);
-                            }
+                        while (ready_workers != local_buffer_cnt) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
                         }
 
                         auto start = std::chrono::high_resolution_clock::now();
@@ -1943,45 +1920,45 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
 }
 
 void Benchmarks::executeAllBenchmarks() {
-    // auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamSW;
-    // logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
-    // std::string logNameSW = logNameStreamSW.str();
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStreamSW;
+    logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
+    std::string logNameSW = logNameStreamSW.str();
 
-    // LOG_INFO("[Task] Set name: " << logNameSW << std::endl;)
+    LOG_INFO("[Task] Set name: " << logNameSW << std::endl;)
 
-    // execLocalBenchmark(logNameSW, "Local");
-    // execLocalBenchmark(logNameSW, "NUMA");
-    // execRemoteBenchmark(logNameSW, "RemoteLocal");
-    // execRemoteBenchmark(logNameSW, "RemoteNUMA");
+    execLocalBenchmark(logNameSW, "Local");
+    execLocalBenchmark(logNameSW, "NUMA");
+    execRemoteBenchmark(logNameSW, "RemoteLocal");
+    execRemoteBenchmark(logNameSW, "RemoteNUMA");
 
-    // LOG_NOFORMAT(std::endl;)
-    // LOG_INFO("Single Worker (SW) Benchmarks ended." << std::endl;)
+    LOG_NOFORMAT(std::endl;)
+    LOG_INFO("Single Worker (SW) Benchmarks ended." << std::endl;)
 
-    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    // std::stringstream logNameStreamMW;
-    // logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
-    // std::string logNameMW = logNameStreamMW.str();
+    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStreamMW;
+    logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
+    std::string logNameMW = logNameStreamMW.str();
 
-    // LOG_INFO("[Task] Set name: " << logNameMW << std::endl;)
+    LOG_INFO("[Task] Set name: " << logNameMW << std::endl;)
 
-    // execLocalBenchmarkMW(logNameMW, "Local");
-    // execLocalBenchmarkMW(logNameMW, "NUMA");
-    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
-    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
-    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
-    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
+    execLocalBenchmarkMW(logNameMW, "Local");
+    execLocalBenchmarkMW(logNameMW, "NUMA");
+    execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
+    execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
+    execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
+    execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
 
-    // LOG_NOFORMAT(std::endl;)
-    // LOG_INFO("Multiple Worker (MW) Benchmarks ended." << std::endl;)
+    LOG_NOFORMAT(std::endl;)
+    LOG_INFO("Multiple Worker (MW) Benchmarks ended." << std::endl;)
 
-    // execUPIBenchmark<true>();
-    // execUPIBenchmark<false>();
+    execUPIBenchmark<true>();
+    execUPIBenchmark<false>();
 
-    // execRDMABenchmark();
+    execRDMABenchmark();
 
     execRDMAHashJoinBenchmark();
 
-    // execRDMAHashJoinPGBenchmark();
-    // execRDMAHashJoinStarBenchmark();
+    execRDMAHashJoinPGBenchmark();
+    execRDMAHashJoinStarBenchmark();
 }

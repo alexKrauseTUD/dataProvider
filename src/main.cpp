@@ -73,10 +73,7 @@ int main(int argc, char *argv[]) {
 
     bool abort = false;
     auto globalExit = [&]() -> void {
-        {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(500ms);
-        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         abort = true;
         ConnectionManager::getInstance().stop(true);
     };
