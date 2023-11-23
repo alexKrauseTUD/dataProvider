@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <unordered_map>
 
 #include "DataCatalog.hpp"
 
@@ -87,6 +88,9 @@ struct col_t {
     std::mutex iteratorLock;
     std::mutex appendLock;
     std::condition_variable iterator_data_available;
+
+    size_t highestConsecPackArrived = 0;
+    std::unordered_map<uint64_t, uint64_t> arrived;
 
     ~col_t() {
         // May be a problem when freeing memory not allocated with numa_alloc

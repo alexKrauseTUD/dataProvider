@@ -20,7 +20,9 @@ enum class catalog_communication_code : uint8_t {
     fetch_column_chunk,
     receive_column_chunk,
     fetch_pseudo_pax,
+    fetch_pseudo_pax_stream,
     receive_pseudo_pax,
+    receive_pseudo_pax_stream,
     receive_last_pseudo_pax,
     reconfigure_chunk_size,
     ack_reconfigure_chunk_size,
@@ -196,8 +198,8 @@ class DataCatalog {
     DataCatalog();
 
    public:
-    uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
-    uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
+    uint64_t dataCatalog_chunkMaxSize = 1024 * 1024 * 2;
+    uint64_t dataCatalog_chunkThreshold = 1024 * 1024 * 2;
     std::map<std::string, table_t*> tables;
 
     static DataCatalog& getInstance();
@@ -232,6 +234,6 @@ class DataCatalog {
     void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
-    void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
-    void fetchPseudoPax(std::size_t conId, std::vector<std::string> idents) const;
+    void fetchColStub(const std::size_t conId, const std::string& ident, bool whole_column = true) const;
+    void fetchPseudoPax(const std::size_t conId, const std::vector<std::string>& idents, const bool asStream = false) const;
 };
