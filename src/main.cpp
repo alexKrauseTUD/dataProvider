@@ -78,6 +78,21 @@ int main(int argc, char *argv[]) {
         ConnectionManager::getInstance().stop(true);
     };
 
+//     LOG_DEBUG1("Creating Columns" << std::endl;)
+// #pragma omp parallel for schedule(static, 2) num_threads(8)
+//     for (size_t i = 0; i < 24; ++i) {
+//         std::string name = "col_" + std::to_string(i);
+
+//         DataCatalog::getInstance().generate(name, col_data_t::gen_bigint, 200000000, 0);
+//     }
+
+//     #pragma omp parallel for schedule(static, 2) num_threads(8)
+//     for (size_t i = 24; i < 48; ++i) {
+//         std::string name = "col_" + std::to_string(i);
+
+//         DataCatalog::getInstance().generate(name, col_data_t::gen_bigint, 200000000, 1);
+//     }
+
     TaskManager::getInstance().setGlobalAbortFunction(globalExit);
     if (ConnectionManager::getInstance().configuration->get<bool>(MEMCONNECT_DEFAULT_CONNECTION_AUTO_LISTEN)) {
         std::thread([]() -> void { TaskManager::getInstance().executeByIdent("listenConnection"); }).detach();

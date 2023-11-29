@@ -187,16 +187,16 @@ struct col_t {
         current_end = data;
     }
 
-    void request_data(bool fetch_complete_column) {
+    void request_data(bool fetch_complete_column, bool asStream = false) {
         std::unique_lock<std::mutex> _lk(iteratorLock);
         if (is_complete || requested_chunks > received_chunks) {
-            LOG_DEBUG2("<data request ignored: " << (is_complete ? "is_complete" : "not_complete") << ">" << std::endl;)
+            LOG_DEBUG2("Data request ignored for: '" << ident << "' because: " << (is_complete ? "is_complete" : "not_complete") << std::endl;)
             // Do Nothing, ignore.
             return;
         }
         ++requested_chunks;
 
-        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column);
+        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column, asStream);
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {

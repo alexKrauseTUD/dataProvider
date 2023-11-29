@@ -33,6 +33,15 @@ inline void wait_col_data_ready(col_t* _col, char* _data) {
     waitingTime += (std::chrono::high_resolution_clock::now() - s_ts);
 }
 
+inline void wait_col_data_ready2(col_t* _col, char* _data, const size_t _bytes) {
+    auto s_ts = std::chrono::high_resolution_clock::now();
+    std::unique_lock<std::mutex> lk(_col->iteratorLock);
+    if (!(_data + _bytes <= reinterpret_cast<char*>(_col->current_end))) {
+        _col->iterator_data_available.wait(lk, [_col, _data, _bytes] { return reinterpret_cast<char*>(_data) + _bytes <= reinterpret_cast<char*>(_col->current_end); });
+    }
+    waitingTime += (std::chrono::high_resolution_clock::now() - s_ts);
+}
+
 template <bool remote, bool chunked, bool paxed, bool prefetching>
 inline void fetch_data(col_t* column, uint64_t* data, const bool reload) {
     if (remote) {
@@ -56,7 +65,7 @@ inline std::vector<size_t> less_than(col_t* column, const uint64_t predicate, co
 
     std::vector<std::size_t> out_vec;
 
-    fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
+    // fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
 
     if (timings) {
         auto s_ts = std::chrono::high_resolution_clock::now();
@@ -94,7 +103,7 @@ inline std::vector<size_t> greater_than(col_t* column, const uint64_t predicate,
 
     std::vector<std::size_t> out_vec;
 
-    fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
+    // fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
 
     if (timings) {
         auto s_ts = std::chrono::high_resolution_clock::now();
@@ -151,7 +160,7 @@ inline std::vector<size_t> between_incl(col_t* column, const uint64_t predicate_
 
     std::vector<std::size_t> out_vec;
 
-    fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
+    // fetch_data<remote, chunked, paxed, prefetching>(column, data, reload);
 
     if (timings) {
         auto s_ts = std::chrono::high_resolution_clock::now();
@@ -182,6 +191,152 @@ inline std::vector<size_t> between_excl(col_t* column, const uint64_t predicate_
 
     return out_vec;
 };
+
+template <bool stream>
+uint64_t chunk(const std::vector<std::string>& idents) {
+    if (idents.size() != 3) {
+        LOG_ERROR("The size of 'idents' was not equal to 3" << std::endl;)
+        return 0;
+    }
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
+
+    col_t* col_0 = DataCatalog::getInstance().find_remote(idents[0]);
+    col_0->request_data(false, stream);
+    col_t* col_1 = DataCatalog::getInstance().find_remote(idents[1]);
+    col_1->request_data(false, stream);
+    col_t* col_2 = DataCatalog::getInstance().find_remote(idents[2]);
+    col_2->request_data(false, stream);
+
+    DataCatalog::getInstance().fetchPseudoPax(1, idents, stream);
+
+    size_t columnSize = col_0->size;
+    size_t max_elems_per_chunk = DataCatalog::getInstance().dataCatalog_chunkMaxSize / sizeof(uint64_t);
+    size_t currentBlockSize = max_elems_per_chunk;
+
+    if (max_elems_per_chunk > Benchmarks::OPTIMAL_BLOCK_SIZE / sizeof(uint64_t)) {
+        currentBlockSize = Benchmarks::OPTIMAL_BLOCK_SIZE / sizeof(uint64_t);
+    }
+
+    uint64_t sum = 0;
+    size_t baseOffset = 0;
+    size_t currentChunkElementsProcessed = 0;
+
+    uint64_t* data_col_0 = reinterpret_cast<uint64_t*>(col_0->data);
+    uint64_t* data_col_1 = reinterpret_cast<uint64_t*>(col_1->data);
+    uint64_t* data_col_2 = reinterpret_cast<uint64_t*>(col_2->data);
+
+    while (baseOffset < columnSize) {
+        const size_t elem_diff = columnSize - baseOffset;
+        if (elem_diff < currentBlockSize) {
+            currentBlockSize = elem_diff;
+        }
+
+        wait_col_data_ready2(col_0, reinterpret_cast<char*>(data_col_0), currentBlockSize * sizeof(uint64_t));
+        wait_col_data_ready2(col_1, reinterpret_cast<char*>(data_col_1), currentBlockSize * sizeof(uint64_t));
+        wait_col_data_ready2(col_2, reinterpret_cast<char*>(data_col_2), currentBlockSize * sizeof(uint64_t));
+        if (!stream && currentChunkElementsProcessed == 0 && baseOffset + max_elems_per_chunk < columnSize) {
+            col_0->request_data(false, stream);
+            col_1->request_data(false, stream);
+            col_2->request_data(false, stream);
+        }
+
+        std::vector<size_t> le_idx = greater_than<true, false, true, false, false, true>(col_2, 5, baseOffset, currentBlockSize,
+                                                                                         less_than<true, false, true, false, false, true>(col_1, 25, baseOffset, currentBlockSize,
+                                                                                                                                          between_incl<true, false, true, false, true, true>(col_0, 10, 30, baseOffset, currentBlockSize, {}, false), false),
+                                                                                         false);
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        for (size_t idx : le_idx) {
+            sum += (data_col_0[idx] * data_col_2[idx]);
+            // ++sum;
+        }
+        workingTime += (std::chrono::high_resolution_clock::now() - s_ts);
+
+        baseOffset += currentBlockSize;
+        data_col_0 += currentBlockSize;
+        data_col_1 += currentBlockSize;
+        data_col_2 += currentBlockSize;
+        currentChunkElementsProcessed = baseOffset % max_elems_per_chunk;
+    }
+
+    return sum;
+}
+
+template <bool stream>
+uint64_t pax(const std::vector<std::string>& idents) {
+    if (idents.size() != 3) {
+        LOG_ERROR("The size of 'idents' was not equal to 3" << std::endl;)
+        return 0;
+    }
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> s_ts;
+
+    col_t* col_0 = DataCatalog::getInstance().find_remote(idents[0]);
+    col_t* col_1 = DataCatalog::getInstance().find_remote(idents[1]);
+    col_t* col_2 = DataCatalog::getInstance().find_remote(idents[2]);
+
+    DataCatalog::getInstance().fetchPseudoPax(1, idents, stream);
+
+    size_t columnSize = col_0->size;
+
+    size_t total_id_len = 0;
+    for (auto& id : idents) {
+        total_id_len += id.size();
+    }
+
+    size_t appMetaSize;
+
+    if (stream) {
+        appMetaSize = sizeof(size_t) + (sizeof(size_t) * (idents.size() * 3)) + total_id_len;
+    } else {
+        appMetaSize = 3 * sizeof(size_t) + (sizeof(size_t) * idents.size()) + total_id_len;
+    }
+    const size_t maximumPayloadSize = ConnectionManager::getInstance().getConnectionById(1)->maxBytesInPayload(appMetaSize);
+
+    size_t max_elems_per_chunk = ((maximumPayloadSize / idents.size()) / (sizeof(uint64_t) * 4)) * 4;
+    size_t currentBlockSize = max_elems_per_chunk;
+
+    uint64_t sum = 0;
+    size_t baseOffset = 0;
+
+    uint64_t* data_col_0 = reinterpret_cast<uint64_t*>(col_0->data);
+    uint64_t* data_col_1 = reinterpret_cast<uint64_t*>(col_1->data);
+    uint64_t* data_col_2 = reinterpret_cast<uint64_t*>(col_2->data);
+
+    while (baseOffset < columnSize) {
+        const size_t elem_diff = columnSize - baseOffset;
+        if (elem_diff < currentBlockSize) {
+            currentBlockSize = elem_diff;
+        }
+
+        wait_col_data_ready2(col_0, reinterpret_cast<char*>(data_col_0), currentBlockSize);
+        wait_col_data_ready2(col_1, reinterpret_cast<char*>(data_col_1), currentBlockSize);
+        wait_col_data_ready2(col_2, reinterpret_cast<char*>(data_col_2), currentBlockSize);
+        if (!stream) {
+            DataCatalog::getInstance().fetchPseudoPax(1, idents);
+        }
+
+        std::vector<size_t> le_idx = greater_than<true, false, true, false, false, true>(col_2, 5, baseOffset, currentBlockSize,
+                                                                                         less_than<true, false, true, false, false, true>(col_1, 25, baseOffset, currentBlockSize,
+                                                                                                                                          between_incl<true, false, true, false, true, true>(col_0, 10, 30, baseOffset, currentBlockSize, {}, false), false),
+                                                                                         false);
+
+        s_ts = std::chrono::high_resolution_clock::now();
+        for (size_t idx : le_idx) {
+            sum += (data_col_0[idx] * data_col_2[idx]);
+            // ++sum;
+        }
+        workingTime += (std::chrono::high_resolution_clock::now() - s_ts);
+
+        baseOffset += currentBlockSize;
+        data_col_0 += currentBlockSize;
+        data_col_1 += currentBlockSize;
+        data_col_2 += currentBlockSize;
+    }
+
+    return sum;
+}
 
 template <bool remote, bool chunked, bool paxed, bool prefetching>
 uint64_t pipe_1(const uint64_t, const std::vector<std::string> idents) {
@@ -1919,46 +2074,303 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
     }
 }
 
-void Benchmarks::executeAllBenchmarks() {
+void Benchmarks::execChunkVsChunkStreamBenchmark() {
+    cpu_set_t cpuset;
+    constexpr size_t numWorkers = 8;
+
     auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamSW;
-    logNameStreamSW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
-    std::string logNameSW = logNameStreamSW.str();
+    std::stringstream logNameStream;
+    logNameStream << "../logs/bench/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "ChunkVsChunkStream.log";
+    std::string logName = logNameStream.str();
 
-    LOG_INFO("[Task] Set name: " << logNameSW << std::endl;)
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
-    execLocalBenchmark(logNameSW, "Local");
-    execLocalBenchmark(logNameSW, "NUMA");
-    execRemoteBenchmark(logNameSW, "RemoteLocal");
-    execRemoteBenchmark(logNameSW, "RemoteNUMA");
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
+    std::vector<std::vector<std::string>> idents(numWorkers);
+
+    DataCatalog::getInstance().clear(true);
+    DataCatalog::getInstance().generateBenchmarkData(numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
+
+    for (size_t i = 0; i < numWorkers * 3; ++i) {
+        idents[i % numWorkers].push_back("col_" + std::to_string(i));
+    }
+
+    std::chrono::_V2::system_clock::time_point s_ts;
+    std::chrono::_V2::system_clock::time_point e_ts;
+
+    std::barrier sync_point(numWorkers + 1);
+
+    std::vector<std::unique_ptr<std::thread>> workers;
+    workers.reserve(numWorkers);
+
+    for (size_t i = 0; i < 10; ++i) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+        reset_timer();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        std::vector<uint64_t> results(numWorkers, 0);
+
+        auto doChunk = [&](const size_t tid) {
+            sync_point.arrive_and_wait();
+            results[tid] = chunk<true>(idents[tid]);
+            sync_point.arrive_and_wait();
+        };
+
+        for (size_t tid = 0; tid < numWorkers; ++tid) {
+            workers.emplace_back(std::make_unique<std::thread>(doChunk, tid));
+            CPU_ZERO(&cpuset);
+            CPU_SET(tid, &cpuset);
+            int rc = pthread_setaffinity_np(workers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
+            if (rc != 0) {
+                LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
+                exit(-10);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        sync_point.arrive_and_wait();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sync_point.arrive_and_wait();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        uint64_t result = std::reduce(results.begin(), results.end());
+
+        out << "\tChunk\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
+            << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << std::flush;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tChunk\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
+                               << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+                               << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl;)
+        std::for_each(workers.begin(), workers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
+        workers.clear();
+    }
+
+    for (size_t i = 0; i < 10; ++i) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+        reset_timer();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        std::vector<uint64_t> results(numWorkers);
+
+        auto doChunk = [&](const size_t tid) {
+            sync_point.arrive_and_wait();
+            results[tid] = chunk<false>(idents[tid]);
+            sync_point.arrive_and_wait();
+        };
+
+        for (size_t tid = 0; tid < numWorkers; ++tid) {
+            workers.emplace_back(std::make_unique<std::thread>(doChunk, tid));
+            CPU_ZERO(&cpuset);
+            CPU_SET(tid, &cpuset);
+            int rc = pthread_setaffinity_np(workers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
+            if (rc != 0) {
+                LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
+                exit(-10);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        sync_point.arrive_and_wait();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sync_point.arrive_and_wait();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        auto result = std::reduce(results.begin(), results.end());
+
+        out << "\tChunk\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
+            << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << std::flush;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tChunk\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
+                               << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+                               << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl;)
+        std::for_each(workers.begin(), workers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
+        workers.clear();
+    }
+
+    out.close();
 
     LOG_NOFORMAT(std::endl;)
-    LOG_INFO("Single Worker (SW) Benchmarks ended." << std::endl;)
+    LOG_INFO("Chunk vs ChunkStream Benchmark ended." << std::endl;)
+}
 
-    in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::stringstream logNameStreamMW;
-    logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
-    std::string logNameMW = logNameStreamMW.str();
+void Benchmarks::execPaxVsPaxStreamBenchmark() {
+    cpu_set_t cpuset;
+    constexpr size_t numWorkers = 8;
 
-    LOG_INFO("[Task] Set name: " << logNameMW << std::endl;)
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    logNameStream << "../logs/bench/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "PaxVsPaxStream.log";
+    std::string logName = logNameStream.str();
 
-    execLocalBenchmarkMW(logNameMW, "Local");
-    execLocalBenchmarkMW(logNameMW, "NUMA");
-    execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
-    execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
-    execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
-    execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
+
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7) << std::endl;
+    std::vector<std::vector<std::string>> idents(numWorkers);
+
+    DataCatalog::getInstance().clear(true);
+    DataCatalog::getInstance().generateBenchmarkData(numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
+
+    for (size_t i = 0; i < numWorkers * 3; ++i) {
+        idents[i % numWorkers].push_back("col_" + std::to_string(i));
+    }
+
+    std::chrono::_V2::system_clock::time_point s_ts;
+    std::chrono::_V2::system_clock::time_point e_ts;
+
+    std::barrier sync_point(numWorkers + 1);
+
+    std::vector<std::unique_ptr<std::thread>> workers;
+    workers.reserve(numWorkers);
+
+    for (size_t i = 0; i < 10; ++i) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+        reset_timer();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        std::vector<uint64_t> results(numWorkers, 0);
+
+        auto doPax = [&](const size_t tid) {
+            sync_point.arrive_and_wait();
+            results[tid] = pax<true>(idents[tid]);
+            sync_point.arrive_and_wait();
+        };
+
+        for (size_t tid = 0; tid < numWorkers; ++tid) {
+            workers.emplace_back(std::make_unique<std::thread>(doPax, tid));
+            CPU_ZERO(&cpuset);
+            CPU_SET(tid, &cpuset);
+            int rc = pthread_setaffinity_np(workers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
+            if (rc != 0) {
+                LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
+                exit(-10);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        sync_point.arrive_and_wait();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sync_point.arrive_and_wait();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        uint64_t result = std::reduce(results.begin(), results.end());
+
+        out << "\tPax\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
+            << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << std::flush;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tPax\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
+                               << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+                               << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl;)
+        std::for_each(workers.begin(), workers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
+        workers.clear();
+    }
+
+    for (size_t i = 0; i < 10; ++i) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+        reset_timer();
+        DataCatalog::getInstance().fetchRemoteInfo();
+        std::vector<uint64_t> results(numWorkers);
+
+        auto pax_single = [&](const size_t tid) {
+            sync_point.arrive_and_wait();
+            results[tid] = pax<false>(idents[tid]);
+            sync_point.arrive_and_wait();
+        };
+
+        for (size_t tid = 0; tid < numWorkers; ++tid) {
+            workers.emplace_back(std::make_unique<std::thread>(pax_single, tid));
+            CPU_ZERO(&cpuset);
+            CPU_SET(tid, &cpuset);
+            int rc = pthread_setaffinity_np(workers.back()->native_handle(), sizeof(cpu_set_t), &cpuset);
+            if (rc != 0) {
+                LOG_ERROR("Error calling pthread_setaffinity_np in copy_pool assignment: " << rc << std::endl;)
+                exit(-10);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        sync_point.arrive_and_wait();
+        s_ts = std::chrono::high_resolution_clock::now();
+        sync_point.arrive_and_wait();
+        e_ts = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> secs = e_ts - s_ts;
+
+        auto result = std::reduce(results.begin(), results.end());
+
+        out << "\tPax\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
+            << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << std::flush;
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tPax\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
+                               << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
+                               << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl;)
+        std::for_each(workers.begin(), workers.end(), [](std::unique_ptr<std::thread>& t) { t->join(); });
+        workers.clear();
+    }
+
+    out.close();
 
     LOG_NOFORMAT(std::endl;)
-    LOG_INFO("Multiple Worker (MW) Benchmarks ended." << std::endl;)
+    LOG_INFO("Pax vs PaxStream Benchmark ended." << std::endl;)
+}
 
-    execUPIBenchmark<true>();
-    execUPIBenchmark<false>();
+void Benchmarks::executeAllBenchmarks() {
+    // auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamSW;
+    // logNameStreamSW << "../logs/bench/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_SW.log";
+    // std::string logNameSW = logNameStreamSW.str();
 
-    execRDMABenchmark();
+    // LOG_INFO("[Task] Set name: " << logNameSW << std::endl;)
 
-    execRDMAHashJoinBenchmark();
+    // execLocalBenchmark(logNameSW, "Local");
+    // execLocalBenchmark(logNameSW, "NUMA");
+    // execRemoteBenchmark(logNameSW, "RemoteLocal");
+    // execRemoteBenchmark(logNameSW, "RemoteNUMA");
 
-    execRDMAHashJoinPGBenchmark();
-    execRDMAHashJoinStarBenchmark();
+    // LOG_NOFORMAT(std::endl;)
+    // LOG_INFO("Single Worker (SW) Benchmarks ended." << std::endl;)
+
+    // in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    // std::stringstream logNameStreamMW;
+    // logNameStreamMW << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "AllBenchmarks_MW.log";
+    // std::string logNameMW = logNameStreamMW.str();
+
+    // LOG_INFO("[Task] Set name: " << logNameMW << std::endl;)
+
+    // execLocalBenchmarkMW(logNameMW, "Local");
+    // execLocalBenchmarkMW(logNameMW, "NUMA");
+    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteLocal");
+    // execRemoteBenchmarkMW(logNameMW, "LocalRemoteNUMA");
+    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteLocal");
+    // execRemoteBenchmarkMW(logNameMW, "NUMARemoteNUMA");
+
+    // LOG_NOFORMAT(std::endl;)
+    // LOG_INFO("Multiple Worker (MW) Benchmarks ended." << std::endl;)
+
+    // execUPIBenchmark<true>();
+    // execUPIBenchmark<false>();
+
+    // execRDMABenchmark();
+
+    // execRDMAHashJoinBenchmark();
+
+    // execRDMAHashJoinPGBenchmark();
+    // execRDMAHashJoinStarBenchmark();
+
+    execChunkVsChunkStreamBenchmark();
+    execPaxVsPaxStreamBenchmark();
 }

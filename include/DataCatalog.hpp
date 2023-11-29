@@ -19,6 +19,8 @@ enum class catalog_communication_code : uint8_t {
     receive_column_data,
     fetch_column_chunk,
     receive_column_chunk,
+    fetch_column_as_stream,
+    receive_column_as_stream,
     fetch_pseudo_pax,
     fetch_pseudo_pax_stream,
     receive_pseudo_pax,
@@ -234,6 +236,6 @@ class DataCatalog {
     void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
-    void fetchColStub(const std::size_t conId, const std::string& ident, bool whole_column = true) const;
+    void fetchColStub(const std::size_t conId, const std::string& ident, bool whole_column = false, bool asStream = false) const;
     void fetchPseudoPax(const std::size_t conId, const std::vector<std::string>& idents, const bool asStream = false) const;
 };
