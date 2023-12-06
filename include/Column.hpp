@@ -1,14 +1,16 @@
 #pragma once
 
+#include <numa.h>
+
+#include <Logger.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
-#include <Logger.h>
-#include <numa.h>
+#include <unordered_map>
 
-#include "DataCatalog.h"
+#include "DataCatalog.hpp"
 
 struct col_t {
     template <typename T, bool chunk_iterator>
@@ -68,8 +70,8 @@ struct col_t {
         };
 
        private:
-        T* data;
         col_t* col;
+        T* data;
     };
 
     void* data = nullptr;
@@ -86,6 +88,9 @@ struct col_t {
     std::mutex iteratorLock;
     std::mutex appendLock;
     std::condition_variable iterator_data_available;
+
+    size_t highestConsecPackArrived = 0;
+    std::unordered_map<uint64_t, uint64_t> arrived;
 
     ~col_t() {
         // May be a problem when freeing memory not allocated with numa_alloc
@@ -182,16 +187,16 @@ struct col_t {
         current_end = data;
     }
 
-    void request_data(bool fetch_complete_column) {
+    void request_data(bool fetch_complete_column, bool asStream = false) {
         std::unique_lock<std::mutex> _lk(iteratorLock);
         if (is_complete || requested_chunks > received_chunks) {
-            LOG_DEBUG2("<data request ignored: " << (is_complete ? "is_complete" : "not_complete") << ">" << std::endl;)
+            LOG_DEBUG2("Data request ignored for: '" << ident << "' because: " << (is_complete ? "is_complete" : "not_complete") << std::endl;)
             // Do Nothing, ignore.
             return;
         }
         ++requested_chunks;
 
-        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column);
+        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column, asStream);
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {
@@ -202,8 +207,8 @@ struct col_t {
         memcpy(reinterpret_cast<char*>(data) + offset, remoteData, chunkSize);
     }
 
-    void advance_end_pointer(size_t size) {
-        current_end = reinterpret_cast<void*>(reinterpret_cast<char*>(current_end) + size);
+    void advance_end_pointer(size_t _size) {
+        current_end = reinterpret_cast<void*>(reinterpret_cast<char*>(current_end) + _size);
         iterator_data_available.notify_all();
     }
 
@@ -252,7 +257,7 @@ struct col_t {
                 break;
             }
             default: {
-                using namespace memordma;
+                using namespace memConnect;
                 LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
             }
         }
@@ -274,6 +279,10 @@ struct col_t {
             }
             case col_data_t::gen_double: {
                 return checksum<double>();
+            }
+            default: {
+                using namespace memConnect;
+                LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
             }
         }
         return 0;
@@ -301,6 +310,10 @@ struct col_t {
                 log_to_file_typed<double>(logfile);
                 break;
             }
+            default: {
+                using namespace memConnect;
+                LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
+            }
         };
     }
 
@@ -313,7 +326,7 @@ struct col_t {
         auto tmp = static_cast<T>(data);
         for (size_t i = 0; i < size && i < 10; ++i) {
             if (datatype == col_data_t::gen_smallint) {
-                ss << " " << (uint64_t)tmp[i];
+                ss << " " << static_cast<uint64_t>(tmp[i]);
             } else {
                 ss << " " << tmp[i];
             }
@@ -337,7 +350,7 @@ struct col_t {
         std::ofstream log(logname);
         for (size_t i = 0; i < size; ++i) {
             if (datatype == col_data_t::gen_smallint) {
-                log << " " << (uint64_t)tmp[i];
+                log << " " << static_cast<uint64_t>(tmp[i]);
             } else {
                 log << " " << tmp[i];
             }
@@ -366,7 +379,7 @@ struct table_t {
 
         std::default_random_engine generator;
 
-        uint8_t colId = 0;
+        size_t colId = 0;
 
         for (auto& col : columns) {
             col->ident = ident + "_col_" + std::to_string(colId);

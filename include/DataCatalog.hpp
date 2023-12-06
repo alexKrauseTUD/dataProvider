@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "ConnectionManager.h"
+#include "ConnectionManager.hpp"
 
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xA0,
@@ -19,8 +19,12 @@ enum class catalog_communication_code : uint8_t {
     receive_column_data,
     fetch_column_chunk,
     receive_column_chunk,
+    fetch_column_as_stream,
+    receive_column_as_stream,
     fetch_pseudo_pax,
+    fetch_pseudo_pax_stream,
     receive_pseudo_pax,
+    receive_pseudo_pax_stream,
     receive_last_pseudo_pax,
     reconfigure_chunk_size,
     ack_reconfigure_chunk_size,
@@ -113,6 +117,10 @@ struct col_network_info {
                    << " " << size_info * sizeof(double) << " Bytes";
                 break;
             }
+            default: {
+                using namespace memConnect;
+                LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
+            }
         }
         return std::move(ss.str());
     }
@@ -192,8 +200,8 @@ class DataCatalog {
     DataCatalog();
 
    public:
-    uint64_t dataCatalog_chunkMaxSize = 1024 * 512 * 4;
-    uint64_t dataCatalog_chunkThreshold = 1024 * 512 * 4;
+    uint64_t dataCatalog_chunkMaxSize = 1024 * 1024 * 2;
+    uint64_t dataCatalog_chunkThreshold = 1024 * 1024 * 2;
     std::map<std::string, table_t*> tables;
 
     static DataCatalog& getInstance();
@@ -228,6 +236,6 @@ class DataCatalog {
     void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
-    void fetchColStub(std::size_t conId, std::string& ident, bool whole_column = true) const;
-    void fetchPseudoPax(std::size_t conId, std::vector<std::string> idents) const;
+    void fetchColStub(const std::size_t conId, const std::string& ident, bool whole_column = false, bool asStream = false) const;
+    void fetchPseudoPax(const std::size_t conId, const std::vector<std::string>& idents, const bool asStream = false) const;
 };

@@ -38,12 +38,15 @@ class Benchmarks {
 
     template <bool filter>
     void execUPIBenchmark();
-    
+
     void execRDMABenchmark();
     void execRDMAHashJoinBenchmark();
     void execRDMAHashJoinPGBenchmark();
     void execRDMAHashJoinStarBenchmark();
 
+    void execChunkVsChunkStreamBenchmark();
+    void execPaxVsPaxStreamBenchmark();
+
     static const size_t WORKER_NUMBER = 8;
-    Worker workers[WORKER_NUMBER];
+    // Worker workers[WORKER_NUMBER];
 };
