@@ -32,6 +32,11 @@ include_directories(ext/MemConnect)
 include_directories(ext/MemConnect/include)
 include_directories(ext/MemConnect/src)
 
+add_subdirectory("ext/DisaggDataDisciple")
+include_directories(ext/DisaggDataDisciple)
+include_directories(ext/DisaggDataDisciple/include)
+include_directories(ext/DisaggDataDisciple/src)
+
 # add_compile_options("-fsanitize=thread")
 add_compile_options("-fopenmp")
 add_compile_options("${OPTIMIZE_OPTIONS}")
@@ -44,12 +49,18 @@ file(GLOB_RECURSE SOURCES ${SRC_DIR}/*.cpp)
 file(GLOB_RECURSE HEADERS ${INC_DIR}/*.h)
 
 file(GLOB_RECURSE SOURCES_RDMA ext/MemConnect/src/*.cpp)
-list(REMOVE_ITEM SOURCES_RDMA ${CMAKE_CURRENT_SOURCE_DIR}/ext/MemConnect/src/memConnect_server.cpp)
+list(REMOVE_ITEM SOURCES_RDMA ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/memConnect_server.cpp)
 file(GLOB_RECURSE HEADERS_RDMA ext/MemConnect/include/*.h)
 add_library(memoLib ${SOURCES_RDMA} ${HEADERS_RDMA})
 target_link_libraries(memoLib ibverbs)
 
-include_directories(${CMAKE_SOURCE_DIR}/ext/MemConnect ${CMAKE_SOURCE_DIR}/ext/MemConnect/include)
+file(GLOB_RECURSE SOURCES_TCP ext/DisaggDataDisciple/src/*.cpp)
+list(REMOVE_ITEM SOURCES_TCP ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/client/tcp_client_example.cpp)
+list(REMOVE_ITEM SOURCES_TCP ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/server/tcp_server_example.cpp)
+file(GLOB_RECURSE HEADERS_TCP ext/DisaggDataDisciple/include/*.h)
+add_library(busLib ${SOURCES_TCP} ${HEADERS_TCP})
+
+include_directories(${CMAKE_SOURCE_DIR}/ext/MemConnect ${CMAKE_SOURCE_DIR}/ext/MemConnect/include ${ProtobufIncludePath})
 
 add_executable(disaggDataProvider ${SOURCES} ${HEADERS})
-target_link_libraries(disaggDataProvider "pthread" "memoLib" "numa" ${OpenMP_CXX_LIBRARIES})
+target_link_libraries(disaggDataProvider "pthread" "memoLib" "busLib" "numa" ddd-proto-objects ${OpenMP_CXX_LIBRARIES})

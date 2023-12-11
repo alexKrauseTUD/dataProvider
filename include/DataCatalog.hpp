@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "ConnectionManager.hpp"
+#include "WorkItem.pb.h"
 
 enum class catalog_communication_code : uint8_t {
     send_column_info = 0xA0,
@@ -32,6 +33,11 @@ enum class catalog_communication_code : uint8_t {
     ack_generate_benchmark_data,
     clear_catalog,
     ack_clear_catalog
+};
+
+enum class OperatorCodes : uint8_t {
+    query_1 = 0xA0,
+    query_2
 };
 
 enum class col_data_t : unsigned char {
@@ -173,11 +179,16 @@ typedef std::unordered_map<std::string, col_network_info> col_remote_dict_t;
 typedef std::unordered_map<std::string, inflight_col_info_t> incomplete_transimssions_dict_t;
 typedef std::unordered_map<std::string, pax_inflight_col_info_t*> incomplete_pax_transimssions_dict_t;
 
+typedef std::function<void(WorkItem &item)> OperatorCallbackFunction;
+
 class DataCatalog {
    private:
     col_dict_t cols;
     col_dict_t remote_cols;
     col_remote_dict_t remote_col_info;
+
+    std::unordered_map<uint8_t, OperatorCallbackFunction> operatorCallbacks;
+
     bool col_info_received = false;
     bool reconfigured = false;
     bool dataGenerationDone = false;
@@ -199,6 +210,10 @@ class DataCatalog {
 
     DataCatalog();
 
+    void createAndRegisterTasks();
+    void createAndRegisterCallbackFunctions();
+    void createAndRegisterOperatorCallbacks();
+
    public:
     uint64_t dataCatalog_chunkMaxSize = 1024 * 1024 * 2;
     uint64_t dataCatalog_chunkThreshold = 1024 * 1024 * 2;
@@ -213,6 +228,11 @@ class DataCatalog {
     void clear(bool sendRemot = false, bool destructor = false);
 
     void registerCallback(uint8_t code, CallbackFunction cb) const;
+    void registerOperatorCallback();
+
+    void registerOperatorCallback(uint8_t code, OperatorCallbackFunction cb) const;
+    bool hasOperatorCallback(uint8_t code) const;
+    OperatorCallbackFunction findOperatorCallback(uint8_t code) const;
 
     col_dict_t::iterator generate(std::string ident, col_data_t type, size_t elemCount, int node);
     col_t* find_local(std::string ident) const;

@@ -14,6 +14,7 @@
 #include "Column.hpp"
 #include "DataCatalog.hpp"
 #include "Worker.hpp"
+#include "TCPClient.h"
 
 void signal_handler(int signal) {
     switch (signal) {
@@ -71,11 +72,15 @@ int main(int argc, char *argv[]) {
     DataCatalog::getInstance();
     Benchmarks::getInstance();
 
+    TCPClient client("141.76.47.6", 30000);
+    client.start();
+
     bool abort = false;
     auto globalExit = [&]() -> void {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         abort = true;
         ConnectionManager::getInstance().stop(true);
+        client.closeConnection();
     };
 
 //     LOG_DEBUG1("Creating Columns" << std::endl;)

@@ -12,6 +12,12 @@
 using namespace memConnect;
 
 DataCatalog::DataCatalog() {
+    createAndRegisterTasks();
+    createAndRegisterCallbackFunctions();
+    createAndRegisterOperatorCallbacks();
+}
+
+void DataCatalog::createAndRegisterTasks() {
     auto createColLambda = [this]() -> void {
         std::size_t elemCnt;
         char dataType;
@@ -227,7 +233,9 @@ DataCatalog::DataCatalog() {
     TaskManager::getInstance().registerTask(std::make_shared<Task>("logColumn", "[DataCatalog] Log a column to file", logLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarksAll", "[DataCatalog] Execute All Benchmarks", benchmarksAllLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
+}
 
+void DataCatalog::createAndRegisterCallbackFunctions() {
     /* Message Layout
      * [ header_t | payload ]
      * Payload layout
@@ -1209,6 +1217,10 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), cb_ackClearCatalog);
 }
 
+void DataCatalog::createAndRegisterOperatorCallbacks() {
+    
+}
+
 DataCatalog&
 DataCatalog::getInstance() {
     static DataCatalog instance;
@@ -1253,6 +1265,10 @@ void DataCatalog::registerCallback(uint8_t code, CallbackFunction cb) const {
     } else {
         LOG_WARNING("[DataCatalog] Error adding callback for code " << static_cast<uint64_t>(code) << std::endl;)
     }
+}
+
+void DataCatalog::registerOperatorCallback(){
+    
 }
 
 col_dict_t::iterator DataCatalog::generate(std::string ident, col_data_t type, size_t elemCount, int node) {
