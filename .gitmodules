@@ -1,6 +1,6 @@
+[submodule "ext/DisaggDataDisciple"]
+	path = ext/DisaggDataDisciple
+	url = git@github.com:alexKrauseTUD/DisaggDataDisciple.git
 [submodule "ext/MemConnect"]
 	path = ext/MemConnect
 	url = git@github.com:AndreasGeyerTUD/MemConnect.git
-[submodule "ext/DisaggDataDisciple"]
-	path = ext/DisaggDataDisciple
-	url = https://github.com/alexKrauseTUD/DisaggDataDisciple.git
