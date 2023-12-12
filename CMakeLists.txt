@@ -37,6 +37,8 @@ include_directories(ext/DisaggDataDisciple)
 include_directories(ext/DisaggDataDisciple/include)
 include_directories(ext/DisaggDataDisciple/src)
 
+include_directories(${PROTO_SRC_DIR})
+
 # add_compile_options("-fsanitize=thread")
 add_compile_options("-fopenmp")
 add_compile_options("${OPTIMIZE_OPTIONS}")

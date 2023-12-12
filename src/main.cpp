@@ -16,6 +16,8 @@
 #include "Worker.hpp"
 #include "TCPClient.h"
 
+#include "WorkItem.pb.h"
+
 void signal_handler(int signal) {
     switch (signal) {
         case SIGINT: {
