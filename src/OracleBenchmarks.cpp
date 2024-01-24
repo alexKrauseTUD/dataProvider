@@ -36,6 +36,8 @@ OracleBenchmarks::OracleBenchmarks() {
 
         reset_buffer();
 
+        DataCatalog::getInstance().print_all();
+
         ConnectionManager::getInstance().getConnectionById(conId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::ack_generate_oracle_benchmark_data));
     };
 
