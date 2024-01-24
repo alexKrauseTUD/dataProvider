@@ -27,8 +27,6 @@ if(NOT TARGET build-time-make-directory)
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/logs/tests)
 endif()
 
-add_subdirectory("ext/MemConnect")
-
 # add_compile_options("-fsanitize=thread")
 add_compile_options("-fopenmp")
 add_compile_options("${OPTIMIZE_OPTIONS}")
@@ -39,20 +37,14 @@ set(INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(GLOB_RECURSE SOURCES ${SRC_DIR}/*.cpp)
 file(GLOB_RECURSE HEADERS ${INC_DIR}/*.h)
 
-file(GLOB_RECURSE SOURCES_RDMA ext/MemConnect/src/*.cpp)
-list(REMOVE_ITEM SOURCES_RDMA ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/memConnect_server.cpp)
-file(GLOB_RECURSE HEADERS_RDMA ext/MemConnect/include/*.h)
-add_library(memoLib ${SOURCES_RDMA} ${HEADERS_RDMA})
-target_include_directories(memoLib PUBLIC ext/MemConnect/include)
-target_include_directories(memoLib PRIVATE ext/MemConnect/src)
-
-target_link_libraries(memoLib ibverbs)
-
 ## Exposes dddTcpLib target
 add_subdirectory("ext/DisaggDataDisciple")
+
+## Exposes memConnectLib target
+add_subdirectory("ext/MemConnect")
 
 add_executable(disaggDataProvider ${SOURCES} ${HEADERS})
 
 # PROTO_SRC_DIR is exposed by ext/DisaggDataDisciple
-target_include_directories(disaggDataProvider PRIVATE ${INC_DIR} ${PROTO_SRC_DIR})
-target_link_libraries(disaggDataProvider "pthread" "memoLib" "dddTcpLib" "numa" ddd-proto-objects ${OpenMP_CXX_LIBRARIES})
+target_include_directories(disaggDataProvider PRIVATE ${INC_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${PROTO_SRC_DIR})
+target_link_libraries(disaggDataProvider "pthread" "memConnectLib" "dddTcpLib" "numa" ddd-proto-objects ${OpenMP_CXX_LIBRARIES})
