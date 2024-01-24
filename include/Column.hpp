@@ -263,7 +263,7 @@ struct col_t {
         }
         ss << " [" << (is_remote ? "remote," : "local,") << (is_complete ? "complete" : "incomplete") << "]"
            << " CS: " << calc_checksum();
-        return std::move(ss.str());
+        return ss.str();
     }
 
     size_t calc_checksum() const {
@@ -331,7 +331,7 @@ struct col_t {
                 ss << " " << tmp[i];
             }
         }
-        return std::move(ss.str());
+        return ss.str();
     }
 
     template <typename T>

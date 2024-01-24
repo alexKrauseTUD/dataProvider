@@ -122,7 +122,7 @@ struct col_network_info {
                 LOG_ERROR("Saw gen_void but its not handled." << std::endl;)
             }
         }
-        return std::move(ss.str());
+        return ss.str();
     }
 };
 
