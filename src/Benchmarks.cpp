@@ -6,15 +6,105 @@
 #include <barrier>
 #include <future>
 
+#include "Column.hpp"
+#include "ConnectionManager.hpp"
 #include "Operators.hpp"
+#include "TaskManager.hpp"
 
 Benchmarks::Benchmarks() {
-    // for (auto& worker : workers) {
-    //     worker.start();
-    // }
+    auto benchmarksAllLambda = [this]() -> void {
+        Benchmarks::getInstance().executeAllBenchmarks();
+    };
+
+    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarksAll", "[DataCatalog] Execute All Benchmarks", benchmarksAllLambda));
+
+    CallbackFunction cb_generateBenchmarkData = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        uint64_t* data = rcv_buffer->getPayloadBasePtr<uint64_t>();
+        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data) + (sizeof(uint64_t) * 6));
+
+        generateBenchmarkData(conId, data[0], data[1], data[2], data[3], data[4], data[5], false, createTables);
+        reset_buffer();
+    };
+
+    CallbackFunction cb_ackGenerateBenchmarkData = [this](const size_t, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+        reset_buffer();
+        std::lock_guard<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = true;
+        dataGenerationCV.notify_all();
+    };
+
+    DataCatalog::getInstance().registerCallback(static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data), cb_generateBenchmarkData);
+    DataCatalog::getInstance().registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), cb_ackGenerateBenchmarkData);
 }
 
 Benchmarks::~Benchmarks() {}
+
+void Benchmarks::generateBenchmarkData(const size_t connectionId, const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote, bool createTables) {
+    LOG_DEBUG1("Generating Benchmark Data" << std::endl;)
+
+    const uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        dataGenerationDone = false;
+        char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) * 6 + sizeof(bool)));
+        char* tmp = remInfos;
+        std::memcpy(reinterpret_cast<void*>(tmp), &distinctLocalColumns, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnsForLocal, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localColumnElements, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &percentageOfRemote, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &localNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &remoteNumaNode, sizeof(uint64_t));
+        tmp += sizeof(uint64_t);
+        std::memcpy(reinterpret_cast<void*>(tmp), &createTables, sizeof(bool));
+
+        ConnectionManager::getInstance().sendData(connectionId, remInfos, sizeof(uint64_t) * 6 + sizeof(bool), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
+    }
+
+    if (createTables) {
+        LOG_DEBUG1("Creating Tables" << std::endl;)
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "tab_" + std::to_string(i);
+
+            DataCatalog::getInstance().tables.insert(std::make_pair(name, new table_t(name, remoteColumnsForLocal + 1, localColumnElements, 0, percentageOfRemote, true)));
+
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                DataCatalog::getInstance().tables.insert(std::make_pair(sub_name, new table_t(sub_name, 2, remoteColumnSize, 0, percentageOfRemote, false)));
+            }
+        }
+    } else {
+        LOG_DEBUG1("Creating Columns" << std::endl;)
+#pragma omp parallel for schedule(static, 2) num_threads(8)
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            std::string name = "col_" + std::to_string(i);
+
+            DataCatalog::getInstance().generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
+
+            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
+                std::string sub_name = name + "_" + std::to_string(j);
+                DataCatalog::getInstance().generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
+            }
+        }
+    }
+
+    if (sendToRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        if (!dataGenerationDone) {
+            dataGenerationCV.wait(lk, [this] { return dataGenerationDone; });
+        }
+    } else {
+        ConnectionManager::getInstance().getConnectionById(connectionId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data));
+    }
+
+    DataCatalog::getInstance().print_all();
+}
 
 std::chrono::duration<double> waitingTime = std::chrono::duration<double>::zero();
 std::chrono::duration<double> workingTime = std::chrono::duration<double>::zero();
@@ -1877,7 +1967,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
         for (size_t bufferRatio = minBufferRatio; bufferRatio <= maxBufferRatio; bufferRatio += 5) {
             LOG_INFO(" --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;)
 
-            DataCatalog::getInstance().generateBenchmarkData(numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, false);
+            generateBenchmarkData(1, numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, false);
 
             const uint64_t remoteColumnElements = localColumnElements * bufferRatio * 0.01;
             const uint64_t largerColumnSize = localColumnElements * sizeof(uint64_t);
@@ -1999,7 +2089,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
         for (size_t bufferRatio = minBufferRatio; bufferRatio <= maxBufferRatio; bufferRatio += 5) {
             LOG_INFO(" --- Running Kernel: " << kernel_pair.second << " / Buffer Ratio: " << bufferRatio << " --- " << std::endl;)
 
-            DataCatalog::getInstance().generateBenchmarkData(numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, true);
+            generateBenchmarkData(1, numWorkers, maximalJoinCnt, localColumnElements, bufferRatio, localNumaNode, remoteNumaNode, true, true);
 
             const uint64_t remoteColumnElements = localColumnElements * bufferRatio * 0.01;
             const uint64_t largerColumnSize = localColumnElements * sizeof(uint64_t);
@@ -2091,7 +2181,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
     std::vector<std::vector<std::string>> idents(numWorkers);
 
     DataCatalog::getInstance().clear(true);
-    DataCatalog::getInstance().generateBenchmarkData(numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
+    generateBenchmarkData(1, numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
 
     for (size_t i = 0; i < numWorkers * 3; ++i) {
         idents[i % numWorkers].push_back("col_" + std::to_string(i));
@@ -2141,7 +2231,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
 
         out << "\tChunk\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
             << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
-            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl
             << std::flush;
         LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tChunk\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
                                << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
@@ -2186,7 +2276,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
 
         out << "\tChunk\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
             << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
-            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl
             << std::flush;
         LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tChunk\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
                                << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
@@ -2218,7 +2308,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
     std::vector<std::vector<std::string>> idents(numWorkers);
 
     DataCatalog::getInstance().clear(true);
-    DataCatalog::getInstance().generateBenchmarkData(numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
+    generateBenchmarkData(1, numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
 
     for (size_t i = 0; i < numWorkers * 3; ++i) {
         idents[i % numWorkers].push_back("col_" + std::to_string(i));
@@ -2268,7 +2358,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
 
         out << "\tPax\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
             << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
-            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl
             << std::flush;
         LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tPax\tStream\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
                                << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
@@ -2313,7 +2403,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
 
         out << "\tPax\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count()
             << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"
-            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers <<")" << std::endl
+            << "Working time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(workingTime).count() / numWorkers << ")" << std::endl
             << std::flush;
         LOG_SUCCESS(std::fixed << std::setprecision(7) << "\tPax\tSingle\t" << OPTIMAL_BLOCK_SIZE << "\t" << result << "\t" << secs.count() << "\t"
                                << "Waiting time total: " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() << " (per thread " << std::chrono::duration_cast<std::chrono::milliseconds>(waitingTime).count() / numWorkers << ")\t"

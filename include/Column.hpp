@@ -85,6 +85,8 @@ struct col_t {
     bool is_complete = false;
     size_t requested_chunks = 0;
     size_t received_chunks = 0;
+    size_t remoteConnectionId;
+
     std::mutex iteratorLock;
     std::mutex appendLock;
     std::condition_variable iterator_data_available;
@@ -196,7 +198,7 @@ struct col_t {
         }
         ++requested_chunks;
 
-        DataCatalog::getInstance().fetchColStub(1, ident, fetch_complete_column, asStream);
+        DataCatalog::getInstance().fetchColStub(remoteConnectionId, ident, fetch_complete_column, asStream);
     }
 
     void append_chunk(size_t offset, size_t chunkSize, char* remoteData) {

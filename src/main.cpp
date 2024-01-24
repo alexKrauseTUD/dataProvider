@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "Benchmarks.hpp"
+#include "OracleBenchmarks.hpp"
 #include "Column.hpp"
 #include "DataCatalog.hpp"
 #include "Worker.hpp"
@@ -70,6 +71,7 @@ int main(int argc, char *argv[]) {
 
     DataCatalog::getInstance();
     Benchmarks::getInstance();
+    OracleBenchmarks::getInstance();
 
     bool abort = false;
     auto globalExit = [&]() -> void {

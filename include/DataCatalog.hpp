@@ -30,6 +30,8 @@ enum class catalog_communication_code : uint8_t {
     ack_reconfigure_chunk_size,
     generate_benchmark_data,
     ack_generate_benchmark_data,
+    generate_oracle_benchmark_data,
+    ack_generate_oracle_benchmark_data,
     clear_catalog,
     ack_clear_catalog
 };
@@ -218,7 +220,7 @@ class DataCatalog {
     col_t* find_local(std::string ident) const;
     col_t* find_remote(std::string ident) const;
     col_t* add_column(std::string ident, col_t* col);
-    col_t* add_remote_column(std::string name, col_network_info ni);
+    col_t* add_remote_column(std::string name, col_network_info ni, size_t connectionId);
 
     void remoteInfoReady();
     void fetchRemoteInfo();
@@ -232,8 +234,6 @@ class DataCatalog {
     void eraseAllRemoteColumns();
 
     void reconfigureChunkSize(const uint64_t newChunkSize, const uint64_t newChunkThreshold);
-
-    void generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode = 0, const uint64_t remoteNumaNode = 0, bool sendToRemote = false, bool createTables = false);
 
     // Communication stubs
     void fetchColStub(const std::size_t conId, const std::string& ident, bool whole_column = false, bool asStream = false) const;

@@ -5,7 +5,6 @@
 #include <Utility.hpp>
 #include <thread>
 
-#include "Benchmarks.hpp"
 #include "Column.hpp"
 #include "Worker.hpp"
 
@@ -216,16 +215,11 @@ DataCatalog::DataCatalog() {
         }
     };
 
-    auto benchmarksAllLambda = [this]() -> void {
-        Benchmarks::getInstance().executeAllBenchmarks();
-    };
-
     TaskManager::getInstance().registerTask(std::make_shared<Task>("createColumn", "[DataCatalog] Create new column", createColLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("printAllColumn", "[DataCatalog] Print all stored columns", [this]() -> void { this->print_all(); this->print_all_remotes(); }));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("printColHead", "[DataCatalog] Print first 10 values of column", printColLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("retrieveRemoteCols", "[DataCatalog] Ask for remote columns", retrieveRemoteColsLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("logColumn", "[DataCatalog] Log a column to file", logLambda));
-    TaskManager::getInstance().registerTask(std::make_shared<Task>("benchmarksAll", "[DataCatalog] Execute All Benchmarks", benchmarksAllLambda));
     TaskManager::getInstance().registerTask(std::make_shared<Task>("itTest", "[DataCatalog] IteratorTest", iteratorTestLambda));
 
     /* Message Layout
@@ -304,7 +298,7 @@ DataCatalog::DataCatalog() {
                 // ss << "Ident not found!";
                 remote_col_info.insert({ident, cni});
                 if (!find_remote(ident)) {
-                    add_remote_column(ident, cni);
+                    add_remote_column(ident, cni, conId);
                 }
             }
         }
@@ -407,7 +401,7 @@ DataCatalog::DataCatalog() {
     /* Message Layout
      * [ header_t | ident_len, ident, col_data_type | col_data ]
      */
-    CallbackFunction cb_receiveCol = [this](const size_t, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+    CallbackFunction cb_receiveCol = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package header
         package_t::header_t* head = rcv_buffer->getFooterPtr<package_t::header_t>();
         // Start of AppMetaData
@@ -464,7 +458,7 @@ DataCatalog::DataCatalog() {
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
             if (col_network_info_iterator != remote_col_info.end()) {
-                col = add_remote_column(ident, col_network_info_iterator->second);
+                col = add_remote_column(ident, col_network_info_iterator->second, conId);
             } else {
                 LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;)
                 return;
@@ -571,7 +565,7 @@ DataCatalog::DataCatalog() {
     /* Message Layout
      * [ header_t | chunk_offset ident_len, ident, col_data_type | col_data ]
      */
-    CallbackFunction cb_receiveColChunk = [this](const size_t, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+    CallbackFunction cb_receiveColChunk = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // std::cout << "[DataCatalog] Received a message with a (part of a) column chnunk." << std::endl;
         // Package header
         package_t::header_t* head = reinterpret_cast<package_t::header_t*>(rcv_buffer->getFooterPtr<package_t::header_t>());
@@ -604,7 +598,7 @@ DataCatalog::DataCatalog() {
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
             if (col_network_info_iterator != remote_col_info.end()) {
-                col = add_remote_column(ident, col_network_info_iterator->second);
+                col = add_remote_column(ident, col_network_info_iterator->second, conId);
             } else {
                 LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message. Current CNI:" << std::endl;)
                 for (auto k : remote_col_info) {
@@ -683,7 +677,7 @@ DataCatalog::DataCatalog() {
     /* Message Layout
      * [ header_t | ident_len, ident, col_data_type | col_data ]
      */
-    CallbackFunction cb_receiveColAsStream = [this](const size_t, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+    CallbackFunction cb_receiveColAsStream = [this](const size_t conId, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         // Package footer
         package_t::header_t* footer = rcv_buffer->getFooterPtr<package_t::header_t>();
         // Start of AppMetaData
@@ -710,7 +704,7 @@ DataCatalog::DataCatalog() {
         if (col == nullptr) {
             // No Col object, did we even fetch remote info beforehand?
             if (col_network_info_iterator != remote_col_info.end()) {
-                col = add_remote_column(ident, col_network_info_iterator->second);
+                col = add_remote_column(ident, col_network_info_iterator->second, conId);
             } else {
                 LOG_WARNING("[DataCatalog] No Network info for received column " << ident << ", fetch column info first -- discarding message" << std::endl;)
                 return;
@@ -1162,21 +1156,6 @@ DataCatalog::DataCatalog() {
         reconfigure_done.notify_all();
     };
 
-    CallbackFunction cb_generateBenchmarkData = [this](const size_t, const ReceiveBuffer* rcv_buffer, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        uint64_t* data = rcv_buffer->getPayloadBasePtr<uint64_t>();
-        bool createTables = *reinterpret_cast<bool*>(reinterpret_cast<char*>(data) + (sizeof(uint64_t) * 6));
-
-        generateBenchmarkData(data[0], data[1], data[2], data[3], data[4], data[5], false, createTables);
-        reset_buffer();
-    };
-
-    CallbackFunction cb_ackGenerateBenchmarkData = [this](const size_t, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
-        reset_buffer();
-        std::lock_guard<std::mutex> lk(dataGenerationLock);
-        dataGenerationDone = true;
-        data_generation_done.notify_all();
-    };
-
     CallbackFunction cb_clearCatalog = [this](const size_t, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         reset_buffer();
         DataCatalog::getInstance().clear();
@@ -1203,8 +1182,6 @@ DataCatalog::DataCatalog() {
     registerCallback(static_cast<uint8_t>(catalog_communication_code::receive_pseudo_pax_stream), cb_receivePseudoPaxStream);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size), cb_reconfigureChunkSize);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_reconfigure_chunk_size), cb_ackReconfigureChunkSize);
-    registerCallback(static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data), cb_generateBenchmarkData);
-    registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data), cb_ackGenerateBenchmarkData);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::clear_catalog), cb_clearCatalog);
     registerCallback(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog), cb_ackClearCatalog);
 }
@@ -1345,7 +1322,7 @@ col_t* DataCatalog::add_column(std::string ident, col_t* col) {
     return cols.insert({ident, col}).first->second;
 }
 
-col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
+col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni, size_t connectionId) {
     std::lock_guard<std::mutex> _lka(appendLock);
 
     auto it = remote_cols.find(name);
@@ -1357,6 +1334,7 @@ col_t* DataCatalog::add_remote_column(std::string name, col_network_info ni) {
         col_t* col = new col_t();
         col->ident = name;
         col->is_remote = true;
+        col->remoteConnectionId = connectionId;
         col->datatype = static_cast<col_data_t>(ni.type_info);
         col->allocate_on_numa(static_cast<col_data_t>(ni.type_info), ni.size_info, 0);
         remote_cols.insert({name, col});
@@ -1534,71 +1512,4 @@ void DataCatalog::reconfigureChunkSize(const uint64_t newChunkSize, const uint64
     reconfigured = false;
     ConnectionManager::getInstance().sendData(1, ptr, sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::reconfigure_chunk_size));
     reconfigure_done.wait(lk, [this] { return reconfigured; });
-}
-
-void DataCatalog::generateBenchmarkData(const uint64_t distinctLocalColumns, const uint64_t remoteColumnsForLocal, const uint64_t localColumnElements, const uint64_t percentageOfRemote, const uint64_t localNumaNode, const uint64_t remoteNumaNode, bool sendToRemote, bool createTables) {
-    LOG_DEBUG1("Generating Benchmark Data" << std::endl;)
-
-    const uint64_t remoteColumnSize = localColumnElements * percentageOfRemote * 0.01;
-
-    if (sendToRemote) {
-        std::unique_lock<std::mutex> lk(dataGenerationLock);
-        dataGenerationDone = false;
-        char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) * 6 + sizeof(bool)));
-        char* tmp = remInfos;
-        std::memcpy(reinterpret_cast<void*>(tmp), &distinctLocalColumns, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnsForLocal, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &localColumnElements, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &percentageOfRemote, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &localNumaNode, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &remoteNumaNode, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        std::memcpy(reinterpret_cast<void*>(tmp), &createTables, sizeof(bool));
-
-        ConnectionManager::getInstance().sendData(1, remInfos, sizeof(uint64_t) * 6 + sizeof(bool), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_benchmark_data));
-    }
-
-    if (createTables) {
-        LOG_DEBUG1("Creating Tables" << std::endl;)
-#pragma omp parallel for schedule(static, 2) num_threads(8)
-        for (size_t i = 0; i < distinctLocalColumns; ++i) {
-            std::string name = "tab_" + std::to_string(i);
-
-            DataCatalog::getInstance().tables.insert(std::make_pair(name, new table_t(name, remoteColumnsForLocal + 1, localColumnElements, 0, percentageOfRemote, true)));
-
-            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
-                std::string sub_name = name + "_" + std::to_string(j);
-                DataCatalog::getInstance().tables.insert(std::make_pair(sub_name, new table_t(sub_name, 2, remoteColumnSize, 0, percentageOfRemote, false)));
-            }
-        }
-    } else {
-        LOG_DEBUG1("Creating Columns" << std::endl;)
-#pragma omp parallel for schedule(static, 2) num_threads(8)
-        for (size_t i = 0; i < distinctLocalColumns; ++i) {
-            std::string name = "col_" + std::to_string(i);
-
-            generate(name, col_data_t::gen_bigint, localColumnElements, localNumaNode);
-
-            for (size_t j = 0; j < remoteColumnsForLocal; ++j) {
-                std::string sub_name = name + "_" + std::to_string(j);
-                generate(sub_name, col_data_t::gen_bigint, remoteColumnSize, remoteNumaNode);
-            }
-        }
-    }
-
-    if (sendToRemote) {
-        std::unique_lock<std::mutex> lk(dataGenerationLock);
-        if (!dataGenerationDone) {
-            data_generation_done.wait(lk, [this] { return dataGenerationDone; });
-        }
-    } else {
-        ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::ack_generate_benchmark_data));
-    }
-
-    print_all();
 }
