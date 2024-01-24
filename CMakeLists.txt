@@ -28,16 +28,6 @@ if(NOT TARGET build-time-make-directory)
 endif()
 
 add_subdirectory("ext/MemConnect")
-include_directories(ext/MemConnect)
-include_directories(ext/MemConnect/include)
-include_directories(ext/MemConnect/src)
-
-add_subdirectory("ext/DisaggDataDisciple")
-include_directories(ext/DisaggDataDisciple)
-include_directories(ext/DisaggDataDisciple/include)
-include_directories(ext/DisaggDataDisciple/src)
-
-include_directories(${PROTO_SRC_DIR})
 
 # add_compile_options("-fsanitize=thread")
 add_compile_options("-fopenmp")
@@ -45,7 +35,6 @@ add_compile_options("${OPTIMIZE_OPTIONS}")
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 file(GLOB_RECURSE SOURCES ${SRC_DIR}/*.cpp)
 file(GLOB_RECURSE HEADERS ${INC_DIR}/*.h)
@@ -54,15 +43,16 @@ file(GLOB_RECURSE SOURCES_RDMA ext/MemConnect/src/*.cpp)
 list(REMOVE_ITEM SOURCES_RDMA ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/memConnect_server.cpp)
 file(GLOB_RECURSE HEADERS_RDMA ext/MemConnect/include/*.h)
 add_library(memoLib ${SOURCES_RDMA} ${HEADERS_RDMA})
+target_include_directories(memoLib PUBLIC ext/MemConnect/include)
+target_include_directories(memoLib PRIVATE ext/MemConnect/src)
+
 target_link_libraries(memoLib ibverbs)
 
-file(GLOB_RECURSE SOURCES_TCP ext/DisaggDataDisciple/src/*.cpp)
-list(REMOVE_ITEM SOURCES_TCP ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/client/tcp_client_example.cpp)
-list(REMOVE_ITEM SOURCES_TCP ${CMAKE_CURRENT_SOURCE_DIR}/ext/DisaggDataDisciple/src/server/tcp_server_example.cpp)
-file(GLOB_RECURSE HEADERS_TCP ext/DisaggDataDisciple/include/*.h)
-add_library(busLib ${SOURCES_TCP} ${HEADERS_TCP})
-
-include_directories(${CMAKE_SOURCE_DIR}/ext/MemConnect ${CMAKE_SOURCE_DIR}/ext/MemConnect/include ${ProtobufIncludePath})
+## Exposes dddTcpLib target
+add_subdirectory("ext/DisaggDataDisciple")
 
 add_executable(disaggDataProvider ${SOURCES} ${HEADERS})
-target_link_libraries(disaggDataProvider "pthread" "memoLib" "busLib" "numa" ddd-proto-objects ${OpenMP_CXX_LIBRARIES})
+
+# PROTO_SRC_DIR is exposed by ext/DisaggDataDisciple
+target_include_directories(disaggDataProvider PRIVATE ${INC_DIR} ${PROTO_SRC_DIR})
+target_link_libraries(disaggDataProvider "pthread" "memoLib" "dddTcpLib" "numa" ddd-proto-objects ${OpenMP_CXX_LIBRARIES})

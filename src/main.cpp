@@ -14,7 +14,7 @@
 #include "Column.hpp"
 #include "DataCatalog.hpp"
 #include "Worker.hpp"
-#include "TCPClient.h"
+#include "TCPClient.hpp"
 
 #include "WorkItem.pb.h"
 
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     DataCatalog::getInstance();
     Benchmarks::getInstance();
 
-    TCPClient client("141.76.47.6", 30000);
+    tuddbs::TCPClient client("141.76.47.6", 30000);
     client.start();
 
     bool abort = false;
