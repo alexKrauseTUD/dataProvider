@@ -97,7 +97,7 @@ DataCatalog::DataCatalog() {
     };
 
     auto iteratorTestLambda = [this]() -> void {
-        fetchRemoteInfo();
+        fetchRemoteInfo(1);
         LOG_CONSOLE("Print info for [1] local [2] remote" << std::endl;)
         size_t locality;
         std::cin >> locality;
@@ -147,7 +147,7 @@ DataCatalog::DataCatalog() {
                     LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
-                fetchRemoteInfo();
+                fetchRemoteInfo(1);
                 {
                     std::size_t count = 0;
                     auto cur_col = find_remote(ident);
@@ -164,7 +164,7 @@ DataCatalog::DataCatalog() {
                     LOG_SUCCESS("\t" << (static_cast<double>(cur_col->sizeInBytes) / 1024 / 1024 / 1024) / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count()) / 1000 / 1000) << "GB/s" << std::endl;)
                 }
                 eraseAllRemoteColumns();
-                fetchRemoteInfo();
+                fetchRemoteInfo(1);
             }
         } else {
             LOG_WARNING("[DataCatalog] Invalid column name." << std::endl;)
@@ -1156,9 +1156,9 @@ DataCatalog::DataCatalog() {
         reconfigure_done.notify_all();
     };
 
-    CallbackFunction cb_clearCatalog = [this](const size_t, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
+    CallbackFunction cb_clearCatalog = [this](const size_t conId, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
         reset_buffer();
-        DataCatalog::getInstance().clear();
+        DataCatalog::getInstance().clear(conId);
     };
 
     CallbackFunction cb_ackClearCatalog = [this](const size_t, const ReceiveBuffer*, const std::_Bind<ResetFunction(uint64_t)> reset_buffer) -> void {
@@ -1196,9 +1196,9 @@ DataCatalog::~DataCatalog() {
     clear(false, true);
 }
 
-void DataCatalog::clear(bool sendRemote, bool destructor) {
+void DataCatalog::clear(size_t conId, bool sendRemote, bool destructor) {
     if (sendRemote) {
-        ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::clear_catalog));
+        ConnectionManager::getInstance().getConnectionById(conId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::clear_catalog));
     }
 
     for (auto it : cols) {
@@ -1220,7 +1220,7 @@ void DataCatalog::clear(bool sendRemote, bool destructor) {
             clear_catalog_done.wait(lk, [this] { return clearCatalogDone; });
         }
     } else if (!destructor) {
-        ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog));
+        ConnectionManager::getInstance().getConnectionById(conId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::ack_clear_catalog));
     }
 }
 
@@ -1487,13 +1487,13 @@ void DataCatalog::fetchPseudoPax(const std::size_t conId, const std::vector<std:
 void DataCatalog::remoteInfoReady() {
     std::lock_guard<std::mutex> lk(remote_info_lock);
     col_info_received = true;
-    remote_info_available.notify_all();
+    remote_info_available.notify_one();
 }
 
-void DataCatalog::fetchRemoteInfo() {
+void DataCatalog::fetchRemoteInfo(const size_t conId) {
     std::unique_lock<std::mutex> lk(remote_info_lock);
     col_info_received = false;
-    ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::send_column_info));
+    ConnectionManager::getInstance().getConnectionById(conId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::send_column_info));
     remote_info_available.wait(lk, [this] { return col_info_received; });
 }
 

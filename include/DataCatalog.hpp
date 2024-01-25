@@ -212,7 +212,7 @@ class DataCatalog {
     void operator=(DataCatalog const&) = delete;
     ~DataCatalog();
 
-    void clear(bool sendRemot = false, bool destructor = false);
+    void clear(size_t conId, bool sendRemot = false, bool destructor = false);
 
     void registerCallback(uint8_t code, CallbackFunction cb) const;
 
@@ -223,7 +223,7 @@ class DataCatalog {
     col_t* add_remote_column(std::string name, col_network_info ni, size_t connectionId);
 
     void remoteInfoReady();
-    void fetchRemoteInfo();
+    void fetchRemoteInfo(const size_t conId);
     void print_column(std::string& ident) const;
     void print_all() const;
     void print_all_remotes() const;

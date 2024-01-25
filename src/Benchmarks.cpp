@@ -1305,7 +1305,7 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
         for (size_t i = 0; i < 10; ++i) {
             DataCatalog::getInstance().eraseAllRemoteColumns();
             reset_timer();
-            DataCatalog::getInstance().fetchRemoteInfo();
+            DataCatalog::getInstance().fetchRemoteInfo(1);
 
             if (predicate == 0) {
                 s_ts = std::chrono::high_resolution_clock::now();
@@ -1333,7 +1333,7 @@ void Benchmarks::execRemoteBenchmark(std::string& logName, std::string locality)
             for (size_t i = 0; i < 10; ++i) {
                 DataCatalog::getInstance().eraseAllRemoteColumns();
                 reset_timer();
-                DataCatalog::getInstance().fetchRemoteInfo();
+                DataCatalog::getInstance().fetchRemoteInfo(1);
 
                 if (predicate == 0) {
                     s_ts = std::chrono::high_resolution_clock::now();
@@ -1447,7 +1447,7 @@ void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string localit
 
     for (size_t i = 0; i < 10; ++i) {
         DataCatalog::getInstance().eraseAllRemoteColumns();
-        DataCatalog::getInstance().fetchRemoteInfo();
+        DataCatalog::getInstance().fetchRemoteInfo(1);
         std::barrier sync_point(WORKER_NUMBER * predicates.size() + 1);
 
         auto do_work = [&](int predicate, size_t index) {
@@ -1484,7 +1484,7 @@ void Benchmarks::execRemoteBenchmarkMW(std::string& logName, std::string localit
 
         for (size_t i = 0; i < 10; ++i) {
             DataCatalog::getInstance().eraseAllRemoteColumns();
-            DataCatalog::getInstance().fetchRemoteInfo();
+            DataCatalog::getInstance().fetchRemoteInfo(1);
             std::barrier sync_point(WORKER_NUMBER * predicates.size() + 1);
 
             auto do_work = [&](int predicate, size_t index) {
@@ -1692,7 +1692,7 @@ void Benchmarks::execRDMABenchmark() {
     out << "local_buffer_cnt\tremote_buffer_cnt\tlocal_column_size\tremote_column_size\tlocal_bwdh\tremote_bwdh\twallclock_bwdh\n"
         << std::flush;
     size_t localColumnSize = DataCatalog::getInstance().find_local(idents[0])->sizeInBytes;
-    DataCatalog::getInstance().fetchRemoteInfo();
+    DataCatalog::getInstance().fetchRemoteInfo(1);
     size_t remoteColumnSize = DataCatalog::getInstance().find_remote(idents[idents.size() / 2])->sizeInBytes;
 
     DataCatalog::getInstance().reconfigureChunkSize(4194304, 4194304);
@@ -1714,7 +1714,7 @@ void Benchmarks::execRDMABenchmark() {
                 std::vector<std::unique_ptr<std::thread>> localWorkers;
                 std::vector<std::unique_ptr<std::thread>> remoteWorkers;
                 DataCatalog::getInstance().eraseAllRemoteColumns();
-                DataCatalog::getInstance().fetchRemoteInfo();
+                DataCatalog::getInstance().fetchRemoteInfo(1);
 
                 auto do_work_local = [&](std::string ident, size_t index) {
                     sync_point_1.arrive_and_wait();
@@ -1831,7 +1831,7 @@ void Benchmarks::execRDMAHashJoinBenchmark() {
                     std::vector<std::unique_ptr<std::thread>> workers;
 
                     DataCatalog::getInstance().eraseAllRemoteColumns();
-                    DataCatalog::getInstance().fetchRemoteInfo();
+                    DataCatalog::getInstance().fetchRemoteInfo(1);
 
                     auto do_work = [&](std::string ident, size_t rbc, size_t func_id) {
                         size_t res = 0;
@@ -1960,7 +1960,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
             kernel_pair = std::make_pair<BenchKernel, std::string>(hash_join_pg_alt, "hashjoin");
         }
 
-        DataCatalog::getInstance().clear(true);
+        DataCatalog::getInstance().clear(1, true);
 
         DataCatalog::getInstance().reconfigureChunkSize(1024 * 1024 * 4, 1024 * 1024 * 4);
 
@@ -1978,7 +1978,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
                     for (size_t runs = 0; runs < maxRuns; ++runs) {
                         reset_timer();
                         DataCatalog::getInstance().eraseAllRemoteColumns();
-                        DataCatalog::getInstance().fetchRemoteInfo();
+                        DataCatalog::getInstance().fetchRemoteInfo(1);
 
                         std::atomic<size_t> ready_workers = {0};
                         std::atomic<size_t> complete_workers = {0};
@@ -2035,7 +2035,7 @@ void Benchmarks::execRDMAHashJoinPGBenchmark() {
                     }
                 }
             }
-            DataCatalog::getInstance().clear(true);
+            DataCatalog::getInstance().clear(1, true);
         }
 
         LOG_NOFORMAT(std::endl;)
@@ -2082,7 +2082,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
             kernel_pair = std::make_pair<BenchKernel, std::string>(hash_join_kernel_star_alt, "star_hashjoin");
         }
 
-        DataCatalog::getInstance().clear(true);
+        DataCatalog::getInstance().clear(1, true);
 
         DataCatalog::getInstance().reconfigureChunkSize(1024 * 1024 * 4, 1024 * 1024 * 4);
 
@@ -2099,7 +2099,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
                 for (size_t join_cnt = 1; join_cnt <= maximalJoinCnt; ++join_cnt) {
                     for (size_t runs = 0; runs < maxRuns; ++runs) {
                         DataCatalog::getInstance().eraseAllRemoteColumns();
-                        DataCatalog::getInstance().fetchRemoteInfo();
+                        DataCatalog::getInstance().fetchRemoteInfo(1);
 
                         std::atomic<size_t> ready_workers = {0};
                         std::atomic<size_t> complete_workers = {0};
@@ -2155,7 +2155,7 @@ void Benchmarks::execRDMAHashJoinStarBenchmark() {
                     }
                 }
             }
-            DataCatalog::getInstance().clear(true);
+            DataCatalog::getInstance().clear(1, true);
         }
         LOG_NOFORMAT(std::endl;)
         LOG_INFO("RDMA Benchmark Hash Join Star ended." << std::endl;)
@@ -2180,7 +2180,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
     out << std::fixed << std::setprecision(7) << std::endl;
     std::vector<std::vector<std::string>> idents(numWorkers);
 
-    DataCatalog::getInstance().clear(true);
+    DataCatalog::getInstance().clear(1, true);
     generateBenchmarkData(1, numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
 
     for (size_t i = 0; i < numWorkers * 3; ++i) {
@@ -2198,7 +2198,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
     for (size_t i = 0; i < 10; ++i) {
         DataCatalog::getInstance().eraseAllRemoteColumns();
         reset_timer();
-        DataCatalog::getInstance().fetchRemoteInfo();
+        DataCatalog::getInstance().fetchRemoteInfo(1);
         std::vector<uint64_t> results(numWorkers, 0);
 
         auto doChunk = [&](const size_t tid) {
@@ -2243,7 +2243,7 @@ void Benchmarks::execChunkVsChunkStreamBenchmark() {
     for (size_t i = 0; i < 10; ++i) {
         DataCatalog::getInstance().eraseAllRemoteColumns();
         reset_timer();
-        DataCatalog::getInstance().fetchRemoteInfo();
+        DataCatalog::getInstance().fetchRemoteInfo(1);
         std::vector<uint64_t> results(numWorkers);
 
         auto doChunk = [&](const size_t tid) {
@@ -2307,7 +2307,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
     out << std::fixed << std::setprecision(7) << std::endl;
     std::vector<std::vector<std::string>> idents(numWorkers);
 
-    DataCatalog::getInstance().clear(true);
+    DataCatalog::getInstance().clear(1, true);
     generateBenchmarkData(1, numWorkers * 3, 0, 20000000, 0, 0, 1, true, false);
 
     for (size_t i = 0; i < numWorkers * 3; ++i) {
@@ -2325,7 +2325,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
     for (size_t i = 0; i < 10; ++i) {
         DataCatalog::getInstance().eraseAllRemoteColumns();
         reset_timer();
-        DataCatalog::getInstance().fetchRemoteInfo();
+        DataCatalog::getInstance().fetchRemoteInfo(1);
         std::vector<uint64_t> results(numWorkers, 0);
 
         auto doPax = [&](const size_t tid) {
@@ -2370,7 +2370,7 @@ void Benchmarks::execPaxVsPaxStreamBenchmark() {
     for (size_t i = 0; i < 10; ++i) {
         DataCatalog::getInstance().eraseAllRemoteColumns();
         reset_timer();
-        DataCatalog::getInstance().fetchRemoteInfo();
+        DataCatalog::getInstance().fetchRemoteInfo(1);
         std::vector<uint64_t> results(numWorkers);
 
         auto pax_single = [&](const size_t tid) {

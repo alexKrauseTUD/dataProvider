@@ -213,12 +213,16 @@ void OracleBenchmarks::execHashJoinBenchmark() {
 
         out << "total_number_joins,time[ns],bwdh,result" << std::endl;
 
-        DataCatalog::getInstance().clear(true);
+        for (size_t conId = 1; conId <= connections; ++conId) {
+            DataCatalog::getInstance().clear(conId, true);
+        }
         generateBenchmarkData(connections, NUMBER_OF_JOINS, localColumnElements, remoteColumnElements);
 
         for (size_t run = 0; run < maxRuns; ++run) {
             DataCatalog::getInstance().eraseAllRemoteColumns();
-            DataCatalog::getInstance().fetchRemoteInfo();
+            for (size_t conId = 1; conId <= connections; ++conId) {
+                DataCatalog::getInstance().fetchRemoteInfo(conId);
+            }
 
             std::atomic<size_t> ready_workers = {0};
             std::atomic<size_t> complete_workers = {0};
@@ -280,7 +284,9 @@ void OracleBenchmarks::execHashJoinBenchmark() {
         out.close();
     }
 
-    DataCatalog::getInstance().clear(true);
+    for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
+        DataCatalog::getInstance().clear(conId, true);
+    }
 
     LOG_NOFORMAT(std::endl;)
     LOG_INFO("Oracle Benchmarks (Hash Join) ended." << std::endl;)
