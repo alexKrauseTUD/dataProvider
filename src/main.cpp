@@ -11,9 +11,9 @@
 #include <iostream>
 
 #include "Benchmarks.hpp"
-#include "OracleBenchmarks.hpp"
 #include "Column.hpp"
 #include "DataCatalog.hpp"
+#include "OracleBenchmarks.hpp"
 #include "Worker.hpp"
 
 void signal_handler(int signal) {
@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
     if (ConnectionManager::getInstance().configuration->get<bool>(MEMCONNECT_DEFAULT_CONNECTION_AUTO_LISTEN)) {
         std::thread([]() -> void {
             NetworkConfig config = {.deviceName = ConnectionManager::getInstance().configuration->getAsString(MEMCONNECT_DEFAULT_IB_DEVICE_NAME),
-                                    .serverName = "172.16.7.205",
+                                    .serverName = "172.16.6.202",
                                     .tcpPort = ConnectionManager::getInstance().configuration->get<uint32_t>(MEMCONNECT_DEFAULT_TCP_PORT),
                                     .clientMode = true,
                                     .infiniBandPort = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_PORT),
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
                                     .infiniBandPort = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_PORT),
                                     .gidIndex = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_GLOBAL_INDEX)};
 
-            for (std::string ip : {"172.16.6.59", "172.16.7.33"}) {
+            for (std::string ip : {"172.16.4.98", "172.16.6.212", "172.16.6.67", "172.16.7.187", "172.16.6.76", "172.16.5.36", "172.16.6.13"}) {
                 config.serverName = ip;
                 size_t connectionId = ConnectionManager::getInstance().registerConnection(config, bufferConfig, ConnectionType(ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_CONNECTION_TYPE)));
 
