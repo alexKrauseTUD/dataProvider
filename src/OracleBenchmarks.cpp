@@ -63,7 +63,7 @@ double calculateMiBPerS(const size_t size_in_bytes, const size_t time_in_ns) {
 inline void waitColDataReady(col_t* _col, char* _data, const size_t _bytes) {
     std::unique_lock<std::mutex> lk(_col->iteratorLock);
     if (!(_data + _bytes <= reinterpret_cast<char*>(_col->current_end))) {
-        _col->iterator_data_available.wait(lk, [_col, _data, _bytes] { return reinterpret_cast<char*>(_data) + _bytes <= reinterpret_cast<char*>(_col->current_end); });
+        _col->iterator_data_available.wait(lk, [_col, _data, _bytes] { return _data + _bytes <= reinterpret_cast<char*>(_col->current_end); });
     }
 }
 
@@ -121,7 +121,7 @@ void hashJoinKernel(std::shared_future<void>* ready_future, const size_t tid, co
     auto start = std::chrono::high_resolution_clock::now();
 
     column_1 = DataCatalog::getInstance().find_remote(idents.second);
-    column_1->request_data(false, true);
+    column_1->request_data(false, false);
 
     column_0 = DataCatalog::getInstance().find_local(idents.first);
 
@@ -142,6 +142,9 @@ void hashJoinKernel(std::shared_future<void>* ready_future, const size_t tid, co
         }
 
         waitColDataReady(column_1, reinterpret_cast<char*>(data_1), currentBlockSize * sizeof(uint64_t));
+        if (baseOffset + currentBlockSize < columnSize1) {
+            column_1->request_data(false, false);
+        }
 
         for (size_t i = 0; i < currentBlockSize; ++i) {
             hashMap[data_1[i]].push_back(i + baseOffset);
@@ -193,9 +196,9 @@ void spawnThreads(BenchKernel kernel, std::vector<size_t>& pin_list, std::vector
 void OracleBenchmarks::execHashJoinBenchmark() {
     size_t numberOfConnections = ConnectionManager::getInstance().getNumberOfConnections();
 
-    const uint64_t localColumnElements = 160000000;
+    const uint64_t localColumnElements = 200000000;
     const uint64_t remoteColumnElements = 0.1 * localColumnElements;
-    const uint64_t maxRuns = 10;
+    const uint64_t maxRuns = 100;
 
     for (size_t connections = 1; connections <= numberOfConnections; ++connections) {
         LOG_INFO("Executing Oracle Benchmarks with " << connections << " connections" << std::endl;)

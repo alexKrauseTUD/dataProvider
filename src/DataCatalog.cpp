@@ -237,7 +237,7 @@ DataCatalog::DataCatalog() {
             totalPayloadSize += sizeof(size_t);    // store size of ident length in a 64bit int
             totalPayloadSize += col.first.size();  // actual c_string
         }
-        LOG_DEBUG2("[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;)
+        // LOG_DEBUG2("[DataCatalog] Callback - allocating " << totalPayloadSize << " for column data." << std::endl;)
         char* data = reinterpret_cast<char*>(numa_alloc_onnode(totalPayloadSize, 0));
         char* tmp = data;
 
@@ -1370,32 +1370,37 @@ void DataCatalog::print_column(std::string& ident) const {
 }
 
 void DataCatalog::print_all() const {
-    LOG_INFO("### Local Data Catalog ###" << std::endl;)
+    std::stringstream stream;
+    stream << "\n### Local Data Catalog ###\n";
+
     if (cols.size() == 0) {
-        LOG_INFO("<empty>" << std::endl;)
+        stream << "<empty>\n";
     }
     for (auto it : cols) {
-        LOG_INFO("[" << it.first << "]: " << it.second->print_identity() << std::endl;)
+        stream << "[" << it.first << "]: " << it.second->print_identity() << "\n";
     }
+
+    LOG_INFO(stream.str() << std::endl;)
 }
 
 void DataCatalog::print_all_remotes() const {
-    LOG_INFO("### Remote Data Catalog ###" << std::endl;)
+    std::stringstream stream;
+    stream << "### Remote Data Catalog ###\n";
     if (remote_col_info.size() == 0) {
-        LOG_INFO("<empty>" << std::endl;)
+        stream << "<empty>\n";
     }
     for (auto it : remote_col_info) {
-        LOG_INFO("[" << it.first << "]: ";)
+        stream << "[" << it.first << "]: ";
         auto remote_col = remote_cols.find(it.first);
         if (remote_col != remote_cols.end()) {
-            LOG_INFO(remote_col->second->print_identity();)
+            stream << remote_col->second->print_identity();
             auto rem_info = remote_col_info.find(it.first);
-            LOG_INFO(" (" << rem_info->second.received_bytes << " received)";)
+            stream << " (" << rem_info->second.received_bytes << " received)\n";
         } else {
-            LOG_INFO(it.second.print_identity() << " [nothing local]";)
+            stream << it.second.print_identity() << " [nothing local]";
         }
-        LOG_INFO(std::endl;)
     }
+    LOG_INFO(stream.str() << std::endl;)
 }
 
 void DataCatalog::eraseAllRemoteColumns() {
