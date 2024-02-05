@@ -713,10 +713,10 @@ DataCatalog::DataCatalog() {
 
         // Write currently received data to the column object
         col->append_chunk(footer->payload_position_offset, footer->current_payload_size, column_data);
-        col->arrived.insert({reinterpret_cast<uint64_t>(footer->package_number), reinterpret_cast<uint64_t>(footer->current_payload_size)});
         // Update network info struct to check if we received all data
-        // lk.lock();
+        lk.lock();
         std::lock_guard<std::mutex> lg(col->iteratorLock);
+        col->arrived.insert({reinterpret_cast<uint64_t>(footer->package_number), reinterpret_cast<uint64_t>(footer->current_payload_size)});
         col_network_info_iterator->second.received_bytes += footer->current_payload_size;
 
         if (col_network_info_iterator->second.check_complete()) {
@@ -1200,6 +1200,8 @@ void DataCatalog::clear(size_t conId, bool sendRemote, bool destructor) {
     if (sendRemote) {
         ConnectionManager::getInstance().getConnectionById(conId)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::clear_catalog));
     }
+
+    LOG_INFO("[DataCatalog] Clearing catalog." << std::endl;)
 
     for (auto it : cols) {
         delete it.second;

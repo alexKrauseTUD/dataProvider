@@ -62,8 +62,9 @@ double calculateMiBPerS(const size_t size_in_bytes, const size_t time_in_ns) {
 
 inline void waitColDataReady(col_t* _col, char* _data, const size_t _bytes) {
     std::unique_lock<std::mutex> lk(_col->iteratorLock);
-    if (!(_data + _bytes <= reinterpret_cast<char*>(_col->current_end))) {
-        _col->iterator_data_available.wait(lk, [_col, _data, _bytes] { return _data + _bytes <= reinterpret_cast<char*>(_col->current_end); });
+    while (_data + _bytes > reinterpret_cast<char*>(_col->current_end)) {
+        // _col->iterator_data_available.wait(lk, [_col, _data, _bytes] { return _data + _bytes <= reinterpret_cast<char*>(_col->current_end); });
+        _col->iterator_data_available.wait(lk);
     }
 }
 
@@ -121,7 +122,7 @@ void hashJoinKernel(std::shared_future<void>* ready_future, const size_t tid, co
     auto start = std::chrono::high_resolution_clock::now();
 
     column_1 = DataCatalog::getInstance().find_remote(idents.second);
-    column_1->request_data(false, false);
+    column_1->request_data(false, true);
 
     column_0 = DataCatalog::getInstance().find_local(idents.first);
 
@@ -132,27 +133,30 @@ void hashJoinKernel(std::shared_future<void>* ready_future, const size_t tid, co
     uint64_t* data_1 = reinterpret_cast<uint64_t*>(column_1->data);
 
     std::unordered_map<uint64_t, std::vector<size_t>> hashMap;
-    size_t currentBlockSize = chunkSize / sizeof(uint64_t);
-    size_t baseOffset = 0;
+    // size_t currentBlockSize = chunkSize / sizeof(uint64_t);
+    // size_t baseOffset = 0;
 
-    while (baseOffset < columnSize1) {
-        const size_t elem_diff = columnSize1 - baseOffset;
-        if (elem_diff < currentBlockSize) {
-            currentBlockSize = elem_diff;
-        }
+    // while (baseOffset < columnSize1) {
+    //     const size_t elem_diff = columnSize1 - baseOffset;
+    //     if (elem_diff < currentBlockSize) {
+    //         currentBlockSize = elem_diff;
+    //     }
 
-        waitColDataReady(column_1, reinterpret_cast<char*>(data_1), currentBlockSize * sizeof(uint64_t));
-        if (baseOffset + currentBlockSize < columnSize1) {
-            column_1->request_data(false, false);
-        }
+    //     currentBlockSize = columnSize1;
 
-        for (size_t i = 0; i < currentBlockSize; ++i) {
-            hashMap[data_1[i]].push_back(i + baseOffset);
-        }
+    waitColDataReady(column_1, reinterpret_cast<char*>(data_1), columnSize1 * sizeof(uint64_t));
+    // if (baseOffset + currentBlockSize < columnSize1) {
+    //     column_1->request_data(false, false);
+    // }
 
-        baseOffset += currentBlockSize;
-        data_1 += currentBlockSize;
+    for (size_t i = 0; i < columnSize1; ++i) {
+        // hashMap[data_1[i]].push_back(i + baseOffset);
+        hashMap[data_1[i]].push_back(i);
     }
+
+    //     baseOffset += currentBlockSize;
+    //     data_1 += currentBlockSize;
+    // }
 
     for (size_t i = 0; i < columnSize0; ++i) {
         auto it = hashMap.find(data_0[i]);
@@ -216,16 +220,16 @@ void OracleBenchmarks::execHashJoinBenchmark() {
 
         out << "total_number_joins,time[ns],bwdh,result" << std::endl;
 
-        for (size_t conId = 1; conId <= connections; ++conId) {
-            DataCatalog::getInstance().clear(conId, true);
-        }
+        // for (size_t conId = 1; conId <= connections; ++conId) {
+        DataCatalog::getInstance().clear(1, true);
+        // }
         generateBenchmarkData(connections, NUMBER_OF_JOINS, localColumnElements, remoteColumnElements);
 
         for (size_t run = 0; run < maxRuns; ++run) {
             DataCatalog::getInstance().eraseAllRemoteColumns();
-            for (size_t conId = 1; conId <= connections; ++conId) {
-                DataCatalog::getInstance().fetchRemoteInfo(conId);
-            }
+            // for (size_t conId = 1; conId <= connections; ++conId) {
+            DataCatalog::getInstance().fetchRemoteInfo(1);
+            // }
 
             std::atomic<size_t> ready_workers = {0};
             std::atomic<size_t> complete_workers = {0};
