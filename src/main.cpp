@@ -195,26 +195,26 @@ int main(int argc, char *argv[]) {
         uint64_t sizeOwnSend = ConnectionManager::getInstance().configuration->get<uint64_t>(MEMCONNECT_DEFAULT_OWN_SEND_BUFFER_SIZE);
         uint64_t sizeRemoteSend = ConnectionManager::getInstance().configuration->get<uint64_t>(MEMCONNECT_DEFAULT_REMOTE_SEND_BUFFER_SIZE);
 
-        BufferConfiguration bufferConfig = {.num_own_send_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_OWN_SEND_THREADS),
-                                            .num_own_receive_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_OWN_RECEIVE_THREADS),
-                                            .num_remote_send_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_REMOTE_SEND_THREADS),
-                                            .num_remote_receive_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_REMOTE_RECEIVE_THREADS),
-                                            .num_own_receive = numOwnReceive,
-                                            .size_own_receive = sizeOwnReceive,
-                                            .num_remote_receive = numRemoteReceive,
-                                            .size_remote_receive = sizeRemoteReceive,
-                                            .num_own_send = numRemoteReceive,
-                                            .size_own_send = sizeOwnSend,
-                                            .num_remote_send = numOwnReceive,
-                                            .size_remote_send = sizeRemoteSend,
-                                            .meta_info_size = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_META_INFO_SIZE)};
+        bufferConfig = {.num_own_send_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_OWN_SEND_THREADS),
+                        .num_own_receive_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_OWN_RECEIVE_THREADS),
+                        .num_remote_send_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_REMOTE_SEND_THREADS),
+                        .num_remote_receive_threads = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_REMOTE_RECEIVE_THREADS),
+                        .num_own_receive = numOwnReceive,
+                        .size_own_receive = sizeOwnReceive,
+                        .num_remote_receive = numRemoteReceive,
+                        .size_remote_receive = sizeRemoteReceive,
+                        .num_own_send = numRemoteReceive,
+                        .size_own_send = sizeOwnSend,
+                        .num_remote_send = numOwnReceive,
+                        .size_remote_send = sizeRemoteSend,
+                        .meta_info_size = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_META_INFO_SIZE)};
 
-        NetworkConfig config = {.deviceName = ConnectionManager::getInstance().configuration->getAsString(MEMCONNECT_DEFAULT_IB_DEVICE_NAME),
-                                .serverName = "0",
-                                .tcpPort = ConnectionManager::getInstance().configuration->get<uint32_t>(MEMCONNECT_DEFAULT_TCP_PORT) + 10000,
-                                .clientMode = false,
-                                .infiniBandPort = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_PORT),
-                                .gidIndex = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_GLOBAL_INDEX)};
+        config = {.deviceName = ConnectionManager::getInstance().configuration->getAsString(MEMCONNECT_DEFAULT_IB_DEVICE_NAME),
+                  .serverName = "0",
+                  .tcpPort = ConnectionManager::getInstance().configuration->get<uint32_t>(MEMCONNECT_DEFAULT_TCP_PORT) + 10000,
+                  .clientMode = false,
+                  .infiniBandPort = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_PORT),
+                  .gidIndex = ConnectionManager::getInstance().configuration->get<int32_t>(MEMCONNECT_DEFAULT_IB_GLOBAL_INDEX)};
 
         for (std::string ip : {"172.16.4.69", "172.16.5.5", "172.16.4.33", "172.16.7.108"}) {
             config.serverName = ip;
