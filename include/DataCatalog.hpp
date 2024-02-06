@@ -33,6 +33,10 @@ enum class catalog_communication_code : uint8_t {
     generate_oracle_benchmark_data,
     ack_generate_oracle_benchmark_data,
     clear_catalog,
+    benchmark_setup,
+    benchmark_setup_ack,
+    benchmark_start,
+    benchmark_done,
     ack_clear_catalog
 };
 
