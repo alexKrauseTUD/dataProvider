@@ -337,7 +337,7 @@ void OracleBenchmarks::execHashJoinBenchmark() {
 void OracleBenchmarks::multiCU() {
     const size_t numberOfConnections = ConnectionManager::getInstance().getNumberOfConnections();
 
-    generateBenchmarkData(0, NUMBER_OF_JOINS, 200000000, 20000000);
+    generateBenchmarkData(0, NUMBER_OF_JOINS, 200000000, 20000000, false);
 
     DataCatalog::getInstance().eraseAllRemoteColumns();
     for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
