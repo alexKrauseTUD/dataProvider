@@ -99,30 +99,32 @@ inline void waitColDataReady(col_t* _col, char* _data, const size_t _bytes) {
     }
 }
 
-void OracleBenchmarks::generateBenchmarkData(const uint64_t numberConnections, const uint64_t distinctLocalColumns, const uint64_t localColumnElements, const uint64_t remoteColumnElements) {
+void OracleBenchmarks::generateBenchmarkData(const uint64_t numberConnections, const uint64_t distinctLocalColumns, const uint64_t localColumnElements, const uint64_t remoteColumnElements, const bool sendRemote) {
     LOG_DEBUG1("Generating Benchmark Data" << std::endl;)
 
-    std::vector<std::vector<size_t>> cons(numberConnections);
+    if (sendRemote) {
+        std::vector<std::vector<size_t>> cons(numberConnections);
 
-    for (size_t i = 0; i < distinctLocalColumns; ++i) {
-        cons[i % numberConnections].push_back(i);
-    }
-
-    for (size_t i = 1; i <= numberConnections; ++i) {
-        uint64_t numEntries = cons[i - 1].size();
-        std::unique_lock<std::mutex> lk(dataGenerationLock);
-        dataGenerationDone = false;
-        char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) + (sizeof(uint64_t) * numEntries) + sizeof(uint64_t)));
-        char* tmp = remInfos;
-        std::memcpy(reinterpret_cast<void*>(tmp), &numEntries, sizeof(uint64_t));
-        tmp += sizeof(uint64_t);
-        for (size_t entr : cons[i - 1]) {
-            std::memcpy(reinterpret_cast<void*>(tmp), &entr, sizeof(uint64_t));
-            tmp += sizeof(uint64_t);
+        for (size_t i = 0; i < distinctLocalColumns; ++i) {
+            cons[i % numberConnections].push_back(i);
         }
-        std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnElements, sizeof(uint64_t));
 
-        ConnectionManager::getInstance().sendData(i + 1, remInfos, sizeof(uint64_t) + (sizeof(uint64_t) * numEntries) + sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_oracle_benchmark_data));
+        for (size_t i = 1; i <= numberConnections; ++i) {
+            uint64_t numEntries = cons[i - 1].size();
+            std::unique_lock<std::mutex> lk(dataGenerationLock);
+            dataGenerationDone = false;
+            char* remInfos = reinterpret_cast<char*>(std::malloc(sizeof(uint64_t) + (sizeof(uint64_t) * numEntries) + sizeof(uint64_t)));
+            char* tmp = remInfos;
+            std::memcpy(reinterpret_cast<void*>(tmp), &numEntries, sizeof(uint64_t));
+            tmp += sizeof(uint64_t);
+            for (size_t entr : cons[i - 1]) {
+                std::memcpy(reinterpret_cast<void*>(tmp), &entr, sizeof(uint64_t));
+                tmp += sizeof(uint64_t);
+            }
+            std::memcpy(reinterpret_cast<void*>(tmp), &remoteColumnElements, sizeof(uint64_t));
+
+            ConnectionManager::getInstance().sendData(i + 1, remInfos, sizeof(uint64_t) + (sizeof(uint64_t) * numEntries) + sizeof(uint64_t), nullptr, 0, static_cast<uint8_t>(catalog_communication_code::generate_oracle_benchmark_data));
+        }
     }
 
     LOG_DEBUG1("Creating Columns" << std::endl;)
@@ -134,9 +136,11 @@ void OracleBenchmarks::generateBenchmarkData(const uint64_t numberConnections, c
     }
     LOG_DEBUG1("Done Creating Columns!" << std::endl;)
 
-    std::unique_lock<std::mutex> lk(dataGenerationLock);
-    if (!dataGenerationDone) {
-        dataGenerationCV.wait(lk, [this] { return dataGenerationDone; });
+    if (sendRemote) {
+        std::unique_lock<std::mutex> lk(dataGenerationLock);
+        if (!dataGenerationDone) {
+            dataGenerationCV.wait(lk, [this] { return dataGenerationDone; });
+        }
     }
 
     DataCatalog::getInstance().print_all();
@@ -333,6 +337,8 @@ void OracleBenchmarks::execHashJoinBenchmark() {
 void OracleBenchmarks::multiCU() {
     const size_t numberOfConnections = ConnectionManager::getInstance().getNumberOfConnections();
 
+    generateBenchmarkData(0, NUMBER_OF_JOINS, 200000000, 20000000);
+
     DataCatalog::getInstance().eraseAllRemoteColumns();
     for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
         DataCatalog::getInstance().fetchRemoteInfo(conId + 1);
@@ -403,111 +409,111 @@ void OracleBenchmarks::execHashJoinBenchmarkMultiCU() {
     const uint64_t remoteColumnElements = 0.1 * localColumnElements;
     const uint64_t maxRuns = 20;
 
-    for (size_t connections = 1; connections <= numberOfConnections; ++connections) {
-        LOG_INFO("Executing Oracle Benchmarks with " << connections << " connections" << std::endl;)
+    // for (size_t connections = 1; connections <= numberOfConnections; ++connections) {
+    LOG_INFO("Executing Oracle Benchmarks with " << numberOfConnections << " connections" << std::endl;)
 
-        auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::stringstream logNameStream;
-        logNameStream << "../logs/bench/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "Oracle_" << connections << "_" << std::to_string(localColumnElements * sizeof(uint64_t)) << "_" << std::to_string(remoteColumnElements * sizeof(uint64_t)) << ".csv";
-        std::string logName = logNameStream.str();
+    auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::stringstream logNameStream;
+    logNameStream << "../logs/bench/" << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d-%H-%M-%S_") << "Oracle_" << numberOfConnections << "_" << std::to_string(localColumnElements * sizeof(uint64_t)) << "_" << std::to_string(remoteColumnElements * sizeof(uint64_t)) << ".csv";
+    std::string logName = logNameStream.str();
 
-        LOG_INFO("[Task] Set name: " << logName << std::endl;)
+    LOG_INFO("[Task] Set name: " << logName << std::endl;)
 
-        std::ofstream out;
-        out.open(logName, std::ios_base::app);
-        out << std::fixed << std::setprecision(7);
+    std::ofstream out;
+    out.open(logName, std::ios_base::app);
+    out << std::fixed << std::setprecision(7);
 
-        out << "total_number_joins,time[ns],bwdh,result" << std::endl;
+    out << "total_number_joins,time[ns],bwdh,result" << std::endl;
 
-        for (size_t conId = 1; conId <= connections; ++conId) {
-            DataCatalog::getInstance().clear(conId + 1, true);
-        }
-        generateBenchmarkData(connections, NUMBER_OF_JOINS, localColumnElements, remoteColumnElements);
-
-        for (size_t run = 0; run < maxRuns; ++run) {
-            DataCatalog::getInstance().eraseAllRemoteColumns();
-
-            ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::benchmark_setup));
-
-            {
-                std::unique_lock<std::mutex> lk(setupMutex);
-                if (!setupDone) {
-                    setupCV.wait(lk, [this] { return setupDone; });
-                }
-            }
-
-            for (size_t conId = 1; conId <= connections; ++conId) {
-                DataCatalog::getInstance().fetchRemoteInfo(conId + 1);
-            }
-
-            std::atomic<size_t> ready_workers = {0};
-            std::atomic<size_t> complete_workers = {0};
-            std::condition_variable done_cv;
-            std::mutex done_cv_lock;
-            bool all_done = false;
-
-            std::vector<std::thread> worker_pool;
-
-            std::promise<void> p;
-            std::shared_future<void> ready_future(p.get_future());
-
-            const size_t res_ptr_size = sizeof(uint64_t) * NUMBER_OF_JOINS / 2;
-            const size_t time_out_ptr_size = sizeof(long) * NUMBER_OF_JOINS / 2;
-            uint64_t* result_out_ptr = reinterpret_cast<uint64_t*>(numa_alloc_onnode(res_ptr_size, 0));
-            long* time_out_ptr = reinterpret_cast<long*>(numa_alloc_onnode(time_out_ptr_size, 0));
-
-            std::vector<size_t> local_pin_list;
-
-            for (size_t i = 0; i < NUMBER_OF_JOINS / 2; ++i) {
-                local_pin_list.emplace_back(global_pins[i]);
-            }
-
-            spawnThreads(hashJoinKernel, local_pin_list, worker_pool, &ready_future, NUMBER_OF_JOINS / 2, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "col_");
-
-            while (ready_workers != NUMBER_OF_JOINS / 2) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-
-            auto start = std::chrono::high_resolution_clock::now();
-            ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::benchmark_start));
-            p.set_value();
-
-            {
-                std::unique_lock<std::mutex> lk(done_cv_lock);
-                if (!all_done) {
-                    done_cv.wait(lk, [&all_done] { return all_done; });
-                }
-            }
-            {
-                std::unique_lock<std::mutex> lk(stopMutex);
-                if (!stopDone) {
-                    stopCV.wait(lk, [&] { return stopDone; });
-                }
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            const size_t duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-            const double wallclock_bwdh = calculateMiBPerS((localColumnElements + remoteColumnElements) * sizeof(uint64_t) * NUMBER_OF_JOINS, duration);
-
-            std::for_each(worker_pool.begin(), worker_pool.end(), [](std::thread& t) { t.join(); });
-            worker_pool.clear();
-
-            uint64_t result = 0;
-
-            for (size_t i = 0; i < NUMBER_OF_JOINS / 2; ++i) {
-                result += result_out_ptr[i];
-            }
-
-            numa_free(result_out_ptr, res_ptr_size);
-            numa_free(time_out_ptr, time_out_ptr_size);
-
-            LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock_bwdh << "\tResult:" << result << std::endl;)
-            // LOG_SUCCESS(std::fixed << std::setprecision(7) << "Waiting time total: " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() << "\tWaiting per thread " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() / local_buffer_cnt << std::endl;)
-            out << std::to_string(NUMBER_OF_JOINS) << "," << std::to_string(duration) << "," << wallclock_bwdh << "," << std::to_string(result) << std::endl
-                << std::flush;
-        }
-        out.close();
+    for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
+        DataCatalog::getInstance().clear(conId + 1, true);
     }
+    generateBenchmarkData(numberOfConnections, NUMBER_OF_JOINS, localColumnElements, remoteColumnElements);
+
+    for (size_t run = 0; run < maxRuns; ++run) {
+        DataCatalog::getInstance().eraseAllRemoteColumns();
+
+        ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::benchmark_setup));
+
+        {
+            std::unique_lock<std::mutex> lk(setupMutex);
+            if (!setupDone) {
+                setupCV.wait(lk, [this] { return setupDone; });
+            }
+        }
+
+        for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
+            DataCatalog::getInstance().fetchRemoteInfo(conId + 1);
+        }
+
+        std::atomic<size_t> ready_workers = {0};
+        std::atomic<size_t> complete_workers = {0};
+        std::condition_variable done_cv;
+        std::mutex done_cv_lock;
+        bool all_done = false;
+
+        std::vector<std::thread> worker_pool;
+
+        std::promise<void> p;
+        std::shared_future<void> ready_future(p.get_future());
+
+        const size_t res_ptr_size = sizeof(uint64_t) * NUMBER_OF_JOINS / 2;
+        const size_t time_out_ptr_size = sizeof(long) * NUMBER_OF_JOINS / 2;
+        uint64_t* result_out_ptr = reinterpret_cast<uint64_t*>(numa_alloc_onnode(res_ptr_size, 0));
+        long* time_out_ptr = reinterpret_cast<long*>(numa_alloc_onnode(time_out_ptr_size, 0));
+
+        std::vector<size_t> local_pin_list;
+
+        for (size_t i = 0; i < NUMBER_OF_JOINS / 2; ++i) {
+            local_pin_list.emplace_back(global_pins[i]);
+        }
+
+        spawnThreads(hashJoinKernel, local_pin_list, worker_pool, &ready_future, NUMBER_OF_JOINS / 2, &ready_workers, &complete_workers, &done_cv, &done_cv_lock, &all_done, result_out_ptr, time_out_ptr, "col_");
+
+        while (ready_workers != NUMBER_OF_JOINS / 2) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        ConnectionManager::getInstance().getConnectionById(1)->sendOpcode(static_cast<uint8_t>(catalog_communication_code::benchmark_start));
+        p.set_value();
+
+        {
+            std::unique_lock<std::mutex> lk(done_cv_lock);
+            if (!all_done) {
+                done_cv.wait(lk, [&all_done] { return all_done; });
+            }
+        }
+        {
+            std::unique_lock<std::mutex> lk(stopMutex);
+            if (!stopDone) {
+                stopCV.wait(lk, [&] { return stopDone; });
+            }
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        const size_t duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+        const double wallclock_bwdh = calculateMiBPerS((localColumnElements + remoteColumnElements) * sizeof(uint64_t) * NUMBER_OF_JOINS, duration);
+
+        std::for_each(worker_pool.begin(), worker_pool.end(), [](std::thread& t) { t.join(); });
+        worker_pool.clear();
+
+        uint64_t result = 0;
+
+        for (size_t i = 0; i < NUMBER_OF_JOINS / 2; ++i) {
+            result += result_out_ptr[i];
+        }
+
+        numa_free(result_out_ptr, res_ptr_size);
+        numa_free(time_out_ptr, time_out_ptr_size);
+
+        LOG_SUCCESS(std::fixed << std::setprecision(7) << "Wallclock bandwidth: " << wallclock_bwdh << "\tResult:" << result << std::endl;)
+        // LOG_SUCCESS(std::fixed << std::setprecision(7) << "Waiting time total: " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() << "\tWaiting per thread " << std::chrono::duration_cast<std::chrono::nanoseconds>(waitingTime).count() / local_buffer_cnt << std::endl;)
+        out << std::to_string(NUMBER_OF_JOINS) << "," << std::to_string(duration) << "," << wallclock_bwdh << "," << std::to_string(result) << std::endl
+            << std::flush;
+    }
+    out.close();
+    // }
 
     for (size_t conId = 1; conId <= numberOfConnections; ++conId) {
         DataCatalog::getInstance().clear(conId, true);

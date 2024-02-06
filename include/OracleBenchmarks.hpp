@@ -2,9 +2,9 @@
 
 #include <stdlib.h>
 
-#include <vector>
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
+#include <vector>
 
 class OracleBenchmarks {
    public:
@@ -40,7 +40,7 @@ class OracleBenchmarks {
     void execHashJoinBenchmark();
     void execHashJoinBenchmarkMultiCU();
 
-    void generateBenchmarkData(const uint64_t numberConnections, const uint64_t distinctLocalColumns, const uint64_t localColumnElements, const uint64_t remoteColumnElements);
+    void generateBenchmarkData(const uint64_t numberConnections, const uint64_t distinctLocalColumns, const uint64_t localColumnElements, const uint64_t remoteColumnElements, const bool sendRemote = true);
 
     static const size_t OPTIMAL_BLOCK_SIZE = 65536;
     static const size_t NUMBER_OF_JOINS = 12;

@@ -191,13 +191,17 @@ int main(int argc, char *argv[]) {
 
             size_t connectionId = ConnectionManager::getInstance().registerConnection(config, bufferConfig, ConnectionType(ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_CONNECTION_TYPE)));
 
-            if (connectionId != 0) {
+            if (connectionId != 1) {
+                LOG_WARNING("Connection not opened with ID 1! Instead: " << connectionId << std::endl;)
+            } else if (connectionId != 0) {
                 LOG_SUCCESS("Connection " << connectionId << " opened for config: " << std::endl);
                 ConnectionManager::getInstance().getConnectionById(connectionId)->printConnectionInfo();
             } else {
                 LOG_ERROR("Something went wrong! The connection could not be opened for config: " << std::endl);
             }
         }).detach();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
         std::thread([]() -> void {
             uint8_t numOwnReceive = ConnectionManager::getInstance().configuration->get<uint8_t>(MEMCONNECT_DEFAULT_OWN_RECEIVE_BUFFER_COUNT);
